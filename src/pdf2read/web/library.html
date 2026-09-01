@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>pdf2read</title>
+  <link rel="stylesheet" href="/app/library.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <header class="nav">
+    <a class="logo" href="/">pdf2read</a>
+    <div class="nav-end">
+      <div class="lang-wrap">
+        <button type="button" class="chip" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">한국어</button>
+        <ul class="lang-menu" id="lang-menu" role="listbox" hidden>
+          <li><button type="button" data-ui="ko">한국어</button></li>
+          <li><button type="button" data-ui="en">English</button></li>
+          <li><button type="button" data-ui="ja">日本語</button></li>
+        </ul>
+      </div>
+      <button type="button" class="icon-btn" id="theme-btn" aria-label="Theme"></button>
+    </div>
+  </header>
+
+  <main>
+    <p class="kicker" id="kicker">PDF → HTML</p>
+    <h1 id="headline">PDF를 HTML로.</h1>
+    <p class="lead" id="lead">파일을 올리면 이 컴퓨터에서 바꿉니다. 번역은 Chrome이 합니다.</p>
+
+    <form id="form" class="stage" aria-label="PDF">
+      <input id="file" type="file" accept="application/pdf,.pdf" hidden>
+      <button type="button" class="drop" id="dropzone">
+        <svg class="doc" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <path d="M16 6h12l10 10v26a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4Z" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M28 6v10h10" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M18 28h12M18 34h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <strong id="drop-title">PDF를 놓거나 선택</strong>
+        <span id="drop-hint">로컬 변환 · 서버로 보내지 않습니다</span>
+        <em id="filename"></em>
+      </button>
+      <div class="stage-bar">
+        <span class="status" id="status"></span>
+        <button type="submit" id="go">변환</button>
+      </div>
+    </form>
+    <div class="progress" id="progress" hidden><i></i></div>
+    <pre class="log" id="log" hidden></pre>
+
+    <section class="shelf">
+      <div class="shelf-head">
+        <h2 id="shelf-title">서재</h2>
+        <span id="count"></span>
+      </div>
+      <div class="books" id="books"></div>
+    </section>
+  </main>
+  <script src="/app/library.js"></script>
+</body>
+</html>
