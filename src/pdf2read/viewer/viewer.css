@@ -45,6 +45,26 @@ a:hover { color: var(--accent, #e26c25); }
   gap: 8px;
   align-items: center;
 }
+.chrome-bar .nav-home {
+  appearance: none;
+  background: var(--accent, #e26c25);
+  color: #fff;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  font-size: 13px;
+  text-decoration: none;
+  text-transform: lowercase;
+}
+.chrome-hint { color: #d9cfc4; font-size: 13px; }
+.chrome-actions .nav-title {
+  background: #fff;
+  color: #2b241e;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 16px;
+}
 .chrome-actions button,
 .nav-link {
   appearance: none;
@@ -52,9 +72,10 @@ a:hover { color: var(--accent, #e26c25); }
   background: #4a3f36;
   color: #fff;
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 8px 14px;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 700;
   text-decoration: none;
   cursor: pointer;
 }
@@ -291,7 +312,10 @@ figcaption {
 }
 .chapter-map a:hover { border-color: var(--accent); }
 .chapter-map .no { color: var(--accent-ink); font-weight: 800; font-size: 12px; }
-.item { padding-left: 0.1rem; }
+.item {
+  padding-left: 0.15rem;
+  font-weight: 500;
+}
 .remember {
   margin-top: 1.8rem;
   border-radius: 6px;

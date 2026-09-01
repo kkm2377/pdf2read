@@ -12,8 +12,8 @@ VIEWER_DIR = Path(__file__).resolve().parent / "viewer"
 
 UI = {
     "ko": {
-        "hint": "Chrome에서 <strong>한국어로 번역</strong> · ← → 이동 · <strong>T</strong> 목차",
-        "cover": "표지",
+        "hint": "← → 이동 · T 목차",
+        "cover": "타이틀로",
         "toc": "목차",
         "close": "닫기",
         "prev_lab": "이전",
@@ -22,17 +22,18 @@ UI = {
         "mid": "보통",
         "large": "크게",
         "resume": "이어서 읽기",
-        "howto": "읽는 방법",
-        "howto_1": "이 HTML을 로컬 서버로 연 뒤 Chrome 번역을 켭니다. 파일을 더블클릭하면 번역이 불안정합니다.",
-        "howto_2": "목차 또는 T 키, 아래 이전/다음, 키보드 ← → 로 이동합니다.",
-        "howto_3": "원본 PDF의 색·표·그림은 최대한 유지하고, 본문만 번역되도록 했습니다.",
+        "howto": "이동",
+        "howto_1": "목차 또는 T 키로 항목을 고릅니다.",
+        "howto_2": "아래 이전/다음, 키보드 ← → 로 이동합니다.",
+        "howto_3": "왼쪽 위의 pdf2read는 서재로, 타이틀로는 이 책의 첫 화면으로 갑니다.",
         "map_hint": "← → 로 앞뒤 항목으로 이동합니다. T 키로 목차를 엽니다.",
         "answers": "解答と解説を見る",
-        "library": "서재",
+        "library": "pdf2read",
+        "home": "pdf2read",
     },
     "en": {
-        "hint": "Use Chrome <strong>Translate</strong> · ← → to move · <strong>T</strong> contents",
-        "cover": "Cover",
+        "hint": "← → to move · T contents",
+        "cover": "Title",
         "toc": "Contents",
         "close": "Close",
         "prev_lab": "Previous",
@@ -41,17 +42,18 @@ UI = {
         "mid": "Medium",
         "large": "Large",
         "resume": "Resume",
-        "howto": "How to read",
-        "howto_1": "Open this folder via a local server, then translate the page in Chrome.",
-        "howto_2": "Use Contents, T, or the arrow keys to move between sections.",
-        "howto_3": "Colors, tables, and figures stay close to the PDF; only the text is meant to be translated.",
+        "howto": "Move",
+        "howto_1": "Open contents with T.",
+        "howto_2": "Use Previous/Next or the arrow keys.",
+        "howto_3": "pdf2read goes to the library. Title goes to this book’s first page.",
         "map_hint": "Use ← → to move. Press T for the table of contents.",
         "answers": "Show answers",
-        "library": "Library",
+        "library": "pdf2read",
+        "home": "pdf2read",
     },
     "ja": {
-        "hint": "Chromeの<strong>翻訳</strong>で読めます · ← → で移動 · <strong>T</strong> 目次",
-        "cover": "表紙",
+        "hint": "← → で移動 · T 目次",
+        "cover": "タイトルへ",
         "toc": "目次",
         "close": "閉じる",
         "prev_lab": "前へ",
@@ -60,13 +62,14 @@ UI = {
         "mid": "標準",
         "large": "大きく",
         "resume": "続きから",
-        "howto": "読み方",
-        "howto_1": "ローカルサーバで開き、Chrome翻訳をオンにします。",
-        "howto_2": "目次、Tキー、← → で項目を移動します。",
-        "howto_3": "色・表・図はPDFに近づけ、本文だけ翻訳される形にしています。",
+        "howto": "移動",
+        "howto_1": "目次またはTキーで項目を選びます。",
+        "howto_2": "前へ/次へ、← → で移動します。",
+        "howto_3": "左上のpdf2readは書庫、タイトルへはこの本の先頭です。",
         "map_hint": "← → で前後の項目へ。Tキーで目次。",
         "answers": "解答と解説を見る",
-        "library": "書庫",
+        "library": "pdf2read",
+        "home": "pdf2read",
     },
 }
 
@@ -82,12 +85,12 @@ def _shell(book_id: str, page_id: str, title: str, src_lang: str, ui: dict) -> s
   <link rel="stylesheet" href="viewer/viewer.css">
 </head>
 <body class="ebook" data-page-id="{esc(page_id)}" data-book-id="{esc(book_id)}">
-  <div class="chrome-bar" lang="{esc(ui.get('_lang','ko'))}" translate="no">
-    <span>{ui['hint']}</span>
+  <div class="chrome-bar" lang="{esc(ui.get('_lang','ko'))}">
+    <a class="nav-home" href="/">{esc(ui.get('home', 'pdf2read'))}</a>
+    <span class="chrome-hint">{ui['hint']}</span>
     <span class="spacer"></span>
     <nav class="chrome-actions">
-      {f'<a class="nav-link" href="../">{esc(ui.get("library", "pdf2read"))}</a>' if ui.get("show_library") else ""}
-      <a class="nav-link" href="index.html">{esc(ui['cover'])}</a>
+      <a class="nav-link nav-title" href="index.html">{esc(ui['cover'])}</a>
       <button type="button" data-fs="s">{esc(ui['small'])}</button>
       <button type="button" data-fs="m">{esc(ui['mid'])}</button>
       <button type="button" data-fs="l">{esc(ui['large'])}</button>
@@ -200,11 +203,6 @@ def render_index(book: dict, units: list[Unit], ui: dict, src_lang: str) -> str:
             f"<h2>{esc(u.chapter_title or u.title)}</h2></a>"
         )
     lang = ui.get("_lang", "ko")
-    lib = (
-        f'<a class="nav-link" href="../">{esc(ui.get("library", "pdf2read"))}</a>'
-        if ui.get("show_library")
-        else ""
-    )
     return f"""<!DOCTYPE html>
 <html lang="{esc(lang)}">
 <head>
@@ -215,10 +213,14 @@ def render_index(book: dict, units: list[Unit], ui: dict, src_lang: str) -> str:
   <link rel="stylesheet" href="viewer/viewer.css">
 </head>
 <body data-book-id="{esc(book["id"])}">
-  <div class="chrome-bar" lang="{esc(lang)}" translate="no">
-    <span>{ui["hint"]}</span>
+  <div class="chrome-bar" lang="{esc(lang)}">
+    <a class="nav-home" href="/">{esc(ui.get("home", "pdf2read"))}</a>
     <span class="spacer"></span>
-    <nav class="chrome-actions">{lib}</nav>
+    <nav class="chrome-actions">
+      <button type="button" data-fs="s">{esc(ui["small"])}</button>
+      <button type="button" data-fs="m">{esc(ui["mid"])}</button>
+      <button type="button" data-fs="l">{esc(ui["large"])}</button>
+    </nav>
   </div>
   <div class="wrap">
     <div class="book">
@@ -228,17 +230,10 @@ def render_index(book: dict, units: list[Unit], ui: dict, src_lang: str) -> str:
         <p id="resume-slot"></p>
       </header>
       <div class="cards{' compact' if compact else ''}">{"".join(cards)}</div>
-      <section class="howto" translate="no">
-        <h2>{esc(ui["howto"])}</h2>
-        <ol>
-          <li>{esc(ui["howto_1"])}</li>
-          <li>{esc(ui["howto_2"])}</li>
-          <li>{esc(ui["howto_3"])}</li>
-        </ol>
-      </section>
     </div>
   </div>
   <script src="viewer/nav-data.js"></script>
+  <script src="viewer/viewer.js"></script>
   <script>
     try {{
       const book = (window.BOOK_NAV || {{}}).bookId;

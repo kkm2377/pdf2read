@@ -24,6 +24,12 @@ python -m pdf2read app --dir out --port 8770
 
 브라우저에서 http://127.0.0.1:8770/ 이 열립니다. PDF를 놓고 **변환**을 누르면 HTML 뷰어가 됩니다. 원문 언어는 PDF에서 추정하고, 번역은 Chrome이 합니다. 오른쪽 위에서 화면 언어와 라이트/다크를 바꿀 수 있습니다.
 
+태블릿·다른 기기에서 열려면 `--host 0.0.0.0` 이 필요합니다. 맥 미니에서 상시 켜 두는 절차는 [MACMINI.md](MACMINI.md) 입니다.
+
+```bash
+python -m pdf2read app --dir out --port 8770 --host 0.0.0.0 --no-open
+```
+
 ## 명령줄
 
 ```bash
@@ -38,6 +44,7 @@ python -m pdf2read serve out/book --port 8770
 - `--start` `--end` 페이지 범위
 - `--chunk` 북마크가 없을 때 몇 쪽을 한 항목으로 묶을지
 - `--library` 서재로 돌아가는 링크를 뷰어에 넣습니다
+- `--host` 서버가 듣는 주소. 기본 `127.0.0.1`(이 컴퓨터만). 태블릿은 `0.0.0.0`
 
 ## 다른 프로그램에서
 

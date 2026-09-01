@@ -4,7 +4,7 @@
       lang: "한국어",
       kicker: "PDF → HTML",
       headline: "PDF를 HTML로.",
-      lead: "파일을 올리면 이 컴퓨터에서 바꿉니다. 번역은 Chrome이 합니다.",
+      lead: "이 컴퓨터에서 PDF를 HTML로 바꿉니다.",
       drop: "PDF를 놓거나 선택",
       hint: "로컬 변환 · 서버로 보내지 않습니다",
       convert: "변환",
@@ -15,12 +15,21 @@
       done: "완료",
       fail: "변환하지 못했습니다.",
       pick: "PDF를 먼저 선택하세요.",
+      folder: "폴더",
+      none: "책",
+      newFolder: "새 폴더",
+      folderName: "폴더 이름",
+      dropHere: "책을 여기로 끌어다 놓으세요",
+      del: "삭제",
+      delFolder: "폴더 삭제",
+      confirmDel: "이 HTML을 이 컴퓨터에서 지울까요?",
+      confirmFolder: "폴더와 안의 책을 모두 지울까요?",
     },
     en: {
       lang: "English",
       kicker: "PDF → HTML",
       headline: "PDF to HTML.",
-      lead: "Files stay on this computer. Chrome does the translation.",
+      lead: "Convert a PDF to HTML on this computer.",
       drop: "Drop or choose a PDF",
       hint: "Local convert · nothing is uploaded",
       convert: "Convert",
@@ -31,12 +40,21 @@
       done: "Done",
       fail: "Conversion failed.",
       pick: "Choose a PDF first.",
+      folder: "Folder",
+      none: "Books",
+      newFolder: "New folder",
+      folderName: "Folder name",
+      dropHere: "Drop a book here",
+      del: "Delete",
+      delFolder: "Delete folder",
+      confirmDel: "Delete this HTML from this computer?",
+      confirmFolder: "Delete this folder and the books inside?",
     },
     ja: {
       lang: "日本語",
       kicker: "PDF → HTML",
       headline: "PDFをHTMLに。",
-      lead: "このコンピュータの中で変換します。翻訳はChromeが行います。",
+      lead: "このコンピュータでPDFをHTMLにします。",
       drop: "PDFを置くか選ぶ",
       hint: "ローカル変換 · 送信しません",
       convert: "変換",
@@ -47,6 +65,15 @@
       done: "完了",
       fail: "変換できませんでした。",
       pick: "先にPDFを選んでください。",
+      folder: "フォルダ",
+      none: "本",
+      newFolder: "新しいフォルダ",
+      folderName: "フォルダ名",
+      dropHere: "本をここにドロップ",
+      del: "削除",
+      delFolder: "フォルダを削除",
+      confirmDel: "このHTMLをこのコンピュータから消しますか？",
+      confirmFolder: "フォルダと中の本を消しますか？",
     },
   };
 
@@ -66,7 +93,9 @@
   const langBtn = document.getElementById("lang-btn");
   const langMenu = document.getElementById("lang-menu");
   const themeBtn = document.getElementById("theme-btn");
+  const newFolderBtn = document.getElementById("new-folder");
   let chosen = null;
+  let folders = [];
 
   function uiLang() {
     const v = localStorage.getItem("pdf2read-ui") || "ko";
@@ -91,6 +120,7 @@
     document.getElementById("drop-hint").textContent = c.hint;
     go.textContent = c.convert;
     document.getElementById("shelf-title").textContent = c.shelf;
+    newFolderBtn.textContent = c.newFolder;
     langMenu.querySelectorAll("button").forEach((b) => {
       b.setAttribute("aria-selected", b.dataset.ui === uiLang() ? "true" : "false");
     });
@@ -159,21 +189,136 @@
       const res = await fetch("/api/books");
       const data = await res.json();
       const books = data.books || [];
+      folders = data.folders || [];
       countEl.textContent = books.length ? String(books.length) : "";
-      if (!books.length) {
+      if (!books.length && !folders.length) {
         booksEl.innerHTML = `<p class="empty">${escapeHtml(c.empty)}</p>`;
         return;
       }
-      booksEl.innerHTML = books.map((b) => (
-        `<a class="book-card" href="${b.href}">` +
-        `<small>${escapeHtml(b.id)} · ${b.units} ${escapeHtml(c.items)}</small>` +
-        `<h3>${escapeHtml(b.title)}</h3>` +
-        `</a>`
-      )).join("");
+      const groups = new Map();
+      groups.set("", []);
+      folders.forEach((f) => groups.set(f.id, []));
+      books.forEach((b) => {
+        const key = groups.has(b.folder) ? b.folder : "";
+        groups.get(key).push(b);
+      });
+      const blocks = [];
+      folders.forEach((f) => {
+        const list = groups.get(f.id) || [];
+        blocks.push(
+          `<section class="folder-bin" data-drop-folder="${escapeHtml(f.id)}">` +
+          `<header class="folder-tab">` +
+          `<span class="folder-icon" aria-hidden="true"></span>` +
+          `<h3>${escapeHtml(f.name)}</h3>` +
+          `<button type="button" class="icon-del" data-del-folder="${escapeHtml(f.id)}" aria-label="${escapeHtml(c.delFolder)}">×</button>` +
+          `</header>` +
+          `<div class="folder-tray">` +
+          (list.length ? list.map((b) => cardHtml(b, c)).join("") : `<p class="drop-hint">${escapeHtml(c.dropHere)}</p>`) +
+          `</div></section>`
+        );
+      });
+      const loose = groups.get("") || [];
+      if (loose.length || !folders.length) {
+        blocks.push(
+          `<section class="loose" data-drop-folder="">` +
+          `<header><h3>${escapeHtml(c.none)}</h3></header>` +
+          `<div class="books">` +
+          (loose.length ? loose.map((b) => cardHtml(b, c)).join("") : `<p class="empty">${escapeHtml(c.empty)}</p>`) +
+          `</div></section>`
+        );
+      }
+      booksEl.innerHTML = blocks.join("");
     } catch (e) {
       booksEl.innerHTML = `<p class="empty">${escapeHtml(c.fail)}</p>`;
     }
   }
+
+  function cardHtml(b, c) {
+    return (
+      `<article class="book-card" draggable="true" data-book-id="${escapeHtml(b.id)}">` +
+      `<button type="button" class="icon-del" data-del="${escapeHtml(b.id)}" aria-label="${escapeHtml(c.del)}">×</button>` +
+      `<a href="${escapeHtml(b.href)}"><small>${b.units} ${escapeHtml(c.items)}</small>` +
+      `<h3>${escapeHtml(b.title)}</h3></a>` +
+      `</article>`
+    );
+  }
+
+  async function postJson(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || t().fail);
+    return data;
+  }
+
+  newFolderBtn.addEventListener("click", async () => {
+    const name = window.prompt(t().folderName);
+    if (!name) return;
+    try {
+      await postJson("/api/folder", { name });
+      await loadBooks();
+    } catch (e) {
+      statusEl.textContent = e.message;
+    }
+  });
+  booksEl.addEventListener("click", async (e) => {
+    const delBook = e.target.closest("[data-del]");
+    const delFolder = e.target.closest("[data-del-folder]");
+    if (delBook || delFolder) e.preventDefault();
+    try {
+      if (delBook) {
+        if (!window.confirm(t().confirmDel)) return;
+        await postJson("/api/delete", { id: delBook.getAttribute("data-del") });
+        await loadBooks();
+      }
+      if (delFolder) {
+        if (!window.confirm(t().confirmFolder)) return;
+        await postJson("/api/delete", { id: delFolder.getAttribute("data-del-folder") });
+        await loadBooks();
+      }
+    } catch (err) {
+      statusEl.textContent = err.message;
+    }
+  });
+  booksEl.addEventListener("dragstart", (e) => {
+    const card = e.target.closest("[data-book-id]");
+    if (!card || e.target.closest(".icon-del")) return;
+    e.dataTransfer.setData("text/plain", card.getAttribute("data-book-id"));
+    e.dataTransfer.effectAllowed = "move";
+    card.classList.add("dragging");
+  });
+  booksEl.addEventListener("dragend", (e) => {
+    e.target.closest("[data-book-id]")?.classList.remove("dragging");
+    booksEl.querySelectorAll(".over").forEach((el) => el.classList.remove("over"));
+  });
+  booksEl.addEventListener("dragover", (e) => {
+    const zone = e.target.closest("[data-drop-folder]");
+    if (!zone) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    zone.classList.add("over");
+  });
+  booksEl.addEventListener("dragleave", (e) => {
+    const zone = e.target.closest("[data-drop-folder]");
+    if (zone && !zone.contains(e.relatedTarget)) zone.classList.remove("over");
+  });
+  booksEl.addEventListener("drop", async (e) => {
+    const zone = e.target.closest("[data-drop-folder]");
+    if (!zone) return;
+    e.preventDefault();
+    zone.classList.remove("over");
+    const id = e.dataTransfer.getData("text/plain");
+    if (!id) return;
+    try {
+      await postJson("/api/move", { id, folder: zone.getAttribute("data-drop-folder") || "" });
+      await loadBooks();
+    } catch (err) {
+      statusEl.textContent = err.message;
+    }
+  });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

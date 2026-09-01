@@ -1,3 +1,41 @@
+(function polishChrome() {
+  const bar = document.querySelector(".chrome-bar");
+  if (!bar) return;
+  document.querySelectorAll(".howto").forEach((el) => el.remove());
+  const lang = bar.getAttribute("lang") || document.documentElement.lang || "ko";
+  const L = {
+    ko: { home: "pdf2read", titleTo: "타이틀로", hint: "← → 이동 · T 목차", small: "작게", mid: "보통", large: "크게" },
+    en: { home: "pdf2read", titleTo: "Title", hint: "← → to move · T contents", small: "Small", mid: "Medium", large: "Large" },
+    ja: { home: "pdf2read", titleTo: "タイトルへ", hint: "← → で移動 · T 目次", small: "小さく", mid: "標準", large: "大きく" },
+  };
+    const t = L[lang] || L.ko;
+  const reading = document.body.classList.contains("ebook");
+  bar.innerHTML =
+    `<a class="nav-home" href="/">${t.home}</a>` +
+    (reading ? `<span class="chrome-hint">${t.hint}</span>` : "") +
+    `<span class="spacer"></span>` +
+    `<nav class="chrome-actions">` +
+    (reading ? `<a class="nav-link nav-title" href="index.html">${t.titleTo}</a>` : "") +
+    `<button type="button" data-fs="s">${t.small}</button>` +
+    `<button type="button" data-fs="m">${t.mid}</button>` +
+    `<button type="button" data-fs="l">${t.large}</button>` +
+    `</nav>`;
+  const savedFs = localStorage.getItem("pdf2read-fs") || "m";
+  document.documentElement.classList.add("fs-" + savedFs);
+  bar.querySelectorAll("[data-fs]").forEach((btn) => {
+    const size = btn.getAttribute("data-fs");
+    btn.setAttribute("aria-pressed", size === savedFs ? "true" : "false");
+    btn.addEventListener("click", () => {
+      document.documentElement.classList.remove("fs-s", "fs-m", "fs-l");
+      document.documentElement.classList.add("fs-" + size);
+      localStorage.setItem("pdf2read-fs", size);
+      bar.querySelectorAll("[data-fs]").forEach((b) => {
+        b.setAttribute("aria-pressed", b.getAttribute("data-fs") === size ? "true" : "false");
+      });
+    });
+  });
+})();
+
 (function () {
   const nav = window.BOOK_NAV;
   if (!nav || !document.body.classList.contains("ebook")) return;

@@ -9,14 +9,59 @@ NOTE_LABELS = (
     "補足", "ポイント", "注意", "MEMO", "Hint", "側注",
 )
 ITEM_START = re.compile(
-    r"^(?:[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|●|・|□|■|◆|(?:\d+[\.．])\s)"
+    r"^(?:[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]|●|•|・|◦|□|■|◆|(?:\d+[\.．])\s)"
 )
 HEAD_START = re.compile(
-    r"^(?:問\d+|〔|①|②|③|④|⑤|⑥|⑦|⑧|⑨|⑩|●|・|□|《解答》|"
+    r"^(?:問\d+|〔|①|②|③|④|⑤|⑥|⑦|⑧|⑨|⑩|●|•|・|□|《解答》|"
     r"[ア-ンA-D][\s　\.．、]|[(（]\d+[)）]|\d+[\.．]\s)"
 )
 CHOICE = re.compile(r"^([ア-ンA-Da-d])[\s　\.．、](.*)$")
 QHEAD = re.compile(r"^問\s*\d+")
+BOX_CHARS = "□■▢☐◻▪▫"
+CHECK_WIDGET = re.compile(rf"CHECK\s*[▶▷►>]\s*[{BOX_CHARS}\s]*")
+ONLY_BOXES = re.compile(rf"^[{BOX_CHARS}\s]+$")
+# RyuminPro maps dotted leaders (……) to small-capital H.
+LEADER_RUN = re.compile(r"[\t ]*[\u029c\u026a]+[\t ]*")
+
+
+def clean_extracted_text(t: str) -> str:
+    """Drop study-check widgets, lone boxes, and PDF leader-dot garbage."""
+    t = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\u200b\ufeff]", "", t or "")
+    t = CHECK_WIDGET.sub(" ", t)
+    t = LEADER_RUN.sub(" …… ", t)
+    t = t.replace("\t", " ")
+    t = re.sub(rf"^[{BOX_CHARS}]+", "", t)
+    t = re.sub(r" {2,}", " ", t).strip()
+    if not t or ONLY_BOXES.match(t):
+        return ""
+    return t
+
+
+def is_duplicate_title(t: str, extra: set[str] | None) -> bool:
+    """True only when the line *is* a running title, not a sentence that starts with it."""
+    if not extra or not t:
+        return False
+    if t in extra:
+        return True
+    if re.search(r"[。、．，!！?？]", t) or len(t) >= 28:
+        return False
+    for e in extra:
+        if not e or len(e) < 4:
+            continue
+        if e.startswith(t) and 8 <= len(t) < len(e):
+            return True
+    return False
+
+
+def line_inside_box(L: dict, box, pad: float = 2) -> bool:
+    """Skip figure *labels*, not body lines that merely wrap around a diagram."""
+    lw = L["x1"] - L["x0"]
+    bw = box[2] - box[0]
+    if bw > 0 and lw > bw * 0.82:
+        return False
+    cx = (L["x0"] + L["x1"]) / 2
+    cy = (L["y0"] + L["y1"]) / 2
+    return box[0] - pad <= cx <= box[2] + pad and box[1] - pad <= cy <= box[3] + pad
 
 
 def esc(s: str) -> str:
@@ -120,18 +165,13 @@ def stitch_question_marks(lines: list[dict]) -> list[dict]:
 
 
 def skip_line(L: dict, layout: dict, headers: set[str], extra: set[str] | None = None) -> bool:
-    t = L["text"].strip()
+    t = clean_extracted_text(L["text"])
     if not t:
         return True
     if t in headers:
         return True
-    if extra:
-        if t in extra:
-            return True
-        if len(t) >= 8:
-            for e in extra:
-                if e and (e.startswith(t) or t.startswith(e)):
-                    return True
+    if is_duplicate_title(t, extra):
+        return True
     if t in {"頻出度"} or re.fullmatch(r"★+", t):
         return True
     if re.fullmatch(r"\d+(?:-\d+)+", t):
@@ -169,13 +209,13 @@ def find_tables(page) -> list[tuple]:
 
 
 def table_html(rows: list) -> str:
-    head = [(c or "").strip() for c in rows[0]]
+    head = [clean_extracted_text(c or "") for c in rows[0]]
     if not any(head):
         return ""
     parts = ['<div class="table-wrap"><table class="book-table">']
     parts.append("<thead><tr>" + "".join(f"<th>{esc(c)}</th>" for c in head) + "</tr></thead><tbody>")
     for row in rows[1:]:
-        cells = [(c or "").strip() for c in row]
+        cells = [clean_extracted_text(c or "") for c in row]
         parts.append("<tr>" + "".join(f"<td>{esc(c)}</td>" for c in cells) + "</tr>")
     parts.append("</tbody></table></div>")
     return "\n".join(parts)
@@ -224,7 +264,8 @@ def find_callouts(page, layout: dict) -> list[dict]:
 
 
 def callout_html(page, box: dict) -> str:
-    lines = [L["text"].strip() for L in lines_from_page(page, clip=box["clip"]) if L["text"].strip()]
+    lines = [clean_extracted_text(L["text"]) for L in lines_from_page(page, clip=box["clip"])]
+    lines = [t for t in lines if t]
     if not lines:
         return ""
     title = ""
@@ -254,7 +295,7 @@ def find_figures(page, layout: dict) -> list[dict]:
         x0, y0, x1, y1 = im["bbox"]
         if x1 - x0 >= 16 and y1 - y0 >= 16:
             imgs.append([x0, y0, x1, y1])
-    clusters = _merge_boxes(imgs, pad=40)
+    clusters = _merge_boxes(imgs, pad=18)
 
     extras = []
     for d in page.get_drawings():
@@ -274,7 +315,7 @@ def find_figures(page, layout: dict) -> list[dict]:
     for e in extras:
         attached = False
         for c in clusters:
-            if overlaps(e, c, pad=48):
+            if overlaps(e, c, pad=18):
                 c[0], c[1] = min(c[0], e[0]), min(c[1], e[1])
                 c[2], c[3] = max(c[2], e[2]), max(c[3], e[3])
                 attached = True
@@ -291,19 +332,20 @@ def find_figures(page, layout: dict) -> list[dict]:
         for L in lines_from_page(page):
             if L["size"] > 8.2:
                 continue
+            if L["x1"] - L["x0"] > w * 0.4:
+                continue
             if L["y0"] < y0 - 18 or L["y0"] > y1 + 22:
                 continue
             if L["x1"] < c[0] - 12 or L["x0"] > c[2] + 70:
                 continue
-            c[0], c[1] = min(c[0], L["x0"]), min(c[1], L["y0"])
-            c[2], c[3] = max(c[2], L["x1"]), max(c[3], L["y1"])
             if L["y0"] >= y1 - 8 and 2 <= len(L["text"].strip()) <= 36:
                 cap = L["text"].strip()
+                c[3] = max(c[3], L["y1"])
         clip = (
-            max(16, c[0] - 12),
-            max(32, c[1] - 16),
-            min(w * 0.82, c[2] + 14),
-            min(h - 14, c[3] + 12),
+            max(16, c[0] - 6),
+            max(32, c[1] - 6),
+            min(w - 8, c[2] + 8),
+            min(h - 14, c[3] + 8),
         )
         figs.append({"clip": clip, "caption": cap or "図"})
 
@@ -343,6 +385,8 @@ def is_heading(text: str, size: float, bold: bool, body: float) -> str | None:
         return "remember"
     if size >= body * 1.55 and 2 <= len(t) <= 40:
         return "h2"
+    if t.startswith(("•", "・", "◦")):
+        return None
     if t.startswith("●") and 3 <= len(t) <= 28 and "。" not in t:
         return "h3"
     if bold and 2 <= len(t) <= 22 and size >= body * 0.95 and not t.endswith(("。", "、", "です", "ます")):
@@ -362,6 +406,7 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
     in_remember = False
     remember: list[str] = []
     choices: list[tuple[str, str]] = []
+    last_y: float | None = None
 
     def flush_p():
         nonlocal buf
@@ -400,24 +445,28 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
             flush_q()
             flush_remember()
             acc.append(("raw", L["html"]))
+            last_y = L.get("y0")
             continue
-        t = L["text"].strip()
+        t = clean_extracted_text(L["text"])
+        if not t:
+            continue
+        y = L.get("y0")
+        gap = (y - last_y) if y is not None and last_y is not None else 0
+        if y is not None:
+            last_y = y
         kind = is_heading(t, L["size"], L["bold"], body)
         ch = CHOICE.match(t)
 
-        if kind == "remember" or t.startswith("□") and (in_remember or t.startswith("□")):
-            if kind == "remember":
-                flush_p()
-                flush_q()
-                in_remember = True
-                continue
-            if in_remember or t.startswith("□"):
-                if not in_remember:
-                    flush_p()
-                    flush_q()
-                    in_remember = True
-                remember.append(re.sub(r"^[□■]\s*", "", t))
-                continue
+        if kind == "remember":
+            flush_p()
+            flush_q()
+            in_remember = True
+            continue
+        if in_remember and t.startswith(("□", "■")):
+            item = re.sub(rf"^[{BOX_CHARS}]+\s*", "", t).strip()
+            if item:
+                remember.append(item)
+            continue
 
         if kind == "h2ans":
             flush_p()
@@ -464,9 +513,19 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
             if t.endswith(("。", "？", "！")):
                 flush_p()
             continue
-        if buf and ITEM_START.match(buf) and re.search(r"(?:特性|こと|です|ます|である|。)$", buf):
-            if len(t) >= 8 and not t.startswith(("、", "。", "て", "で", "を")):
+        if buf and ITEM_START.match(buf):
+            ended = bool(re.search(r"(?:。|？|！|です|ます|である|など)$", buf))
+            new_para = t.startswith(("その他", "また", "なお", "ただし", "例えば", "すなわち"))
+            cont = t[:1] in "、。）」』てでをにがはもくとへより"
+            if gap > 22 and not cont:
                 flush_p()
+            elif (ended and not cont) or new_para:
+                flush_p()
+            else:
+                buf += t
+                if t.endswith(("。", "？", "！")):
+                    flush_p()
+                continue
         if buf and not buf.endswith(("。", "、", "：", ":", "；")):
             buf += t
         elif buf:
@@ -492,10 +551,6 @@ def render_blocks(blocks: list[tuple[str, object]], unit_title: str) -> str:
     for kind, val in blocks:
         if kind in {"h2", "h3"} and val == unit_title:
             continue
-        if kind in {"h2", "h3"} and isinstance(val, str) and val.startswith(unit_title) and val != unit_title:
-            val = val[len(unit_title):].lstrip("　 ")
-            if not val:
-                continue
         if kind == "h3q":
             if q_open:
                 parts.append("</article>")
@@ -552,11 +607,10 @@ def group_notes(lines: list[dict]) -> str:
     cur = "側注"
     buf: list[str] = []
     for L in lines:
-        t = L["text"].strip()
-        if t in NOTE_LABELS or (
-            L["bold"] and 2 <= len(t) <= 12 and "。" not in t and "、" not in t
-            and not t.endswith(("です", "ます")) and not re.fullmatch(r"★+", t)
-        ):
+        t = clean_extracted_text(L["text"])
+        if not t:
+            continue
+        if t in NOTE_LABELS:
             if buf:
                 groups.append((cur, buf))
             cur, buf = t, []
@@ -567,6 +621,8 @@ def group_notes(lines: list[dict]) -> str:
     html_parts = []
     for label, paras in groups:
         body = esc("".join(paras))
+        if not body.strip():
+            continue
         html_parts.append(
             f'<aside class="note"><header>{esc(label)}</header><p>{body}</p></aside>'
         )
@@ -599,9 +655,11 @@ def extract_unit(doc, unit, layout: dict, headers: set[str], assets: Path) -> tu
         all_lines = lines_from_page(page)
         main, side = [], []
         for L in all_lines:
+            L = dict(L)
+            L["text"] = clean_extracted_text(L["text"])
             if skip_line(L, layout, headers, extra):
                 continue
-            if any(overlaps((L["x0"], L["y0"], L["x1"], L["y1"]), b) for b in skip_boxes):
+            if any(line_inside_box(L, b) for b in skip_boxes):
                 continue
             L["page"] = pn
             if layout["mode"] == "two" and L["x0"] >= split:
@@ -628,6 +686,14 @@ def extract_unit(doc, unit, layout: dict, headers: set[str], assets: Path) -> tu
             })
         kept_all.extend(main)
         kept_all.extend(extras)
-    kept_all.sort(key=lambda L: (L.get("page", 0), L["y0"], L["x0"]))
+    mid = split * 0.52
+    kept_all.sort(
+        key=lambda L: (
+            L.get("page", 0),
+            0 if L.get("special") or L["x0"] < mid else 1,
+            L["y0"],
+            L["x0"],
+        )
+    )
     blocks = structure_lines(kept_all, layout["body_size"])
     return render_blocks(blocks, unit.title), group_notes(notes_all)

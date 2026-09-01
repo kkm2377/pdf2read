@@ -96,10 +96,14 @@ def convert_book(
         a = max(1, start or 1)
         b = min(doc.page_count, end or doc.page_count)
         units, mode = plan_units(doc, a, b, chunk, log)
+        starts = [u.start for u in units] or [a]
+        if len(starts) <= 12:
+            sample = starts
+        else:
+            sample = starts[:2] + starts[len(starts)//4:len(starts)//4 + 4] + starts[len(starts)//2:len(starts)//2 + 4] + starts[-3:]
         if not lang or lang == "auto":
             lang = detect_language(doc, a, b)
             log(f"  detected lang={lang}")
-        sample = [u.start for u in units[:12]] or [a]
         layout = detect_columns(doc, sample)
         pages = []
         for u in units:

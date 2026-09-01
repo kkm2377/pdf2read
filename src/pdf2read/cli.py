@@ -26,14 +26,14 @@ def cmd_convert(args: argparse.Namespace) -> int:
     if args.serve:
         root = Path(args.out).expanduser().resolve()
         if args.library:
-            return serve_library(root.parent, args.port, open_browser=not args.no_open)
-        return _serve_book(root, args.port)
+            return serve_library(root.parent, args.port, open_browser=not args.no_open, host=args.host)
+        return _serve_book(root, args.port, host=args.host)
     print(f"Open with: python -m pdf2read app --dir {Path(args.out).parent} --port {args.port}")
     print(f"  or a single book: python -m pdf2read serve {result['out']} --port {args.port}")
     return 0
 
 
-def _serve_book(root: Path, port: int) -> int:
+def _serve_book(root: Path, port: int, host: str = "127.0.0.1") -> int:
     import os
     from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -46,8 +46,8 @@ def _serve_book(root: Path, port: int) -> int:
     class Server(ThreadingHTTPServer):
         allow_reuse_address = True
 
-    with Server(("127.0.0.1", port), Handler) as httpd:
-        print(f"http://127.0.0.1:{port}/", flush=True)
+    with Server((host, port), Handler) as httpd:
+        print(f"http://{host}:{port}/", flush=True)
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
@@ -63,14 +63,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
     if book_like and not args.app:
         if not (root / "index.html").exists():
             raise SystemExit(f"No index.html in {root}")
-        return _serve_book(root, args.port)
-    return serve_library(root, args.port, open_browser=not args.no_open)
+        return _serve_book(root, args.port, host=args.host)
+    return serve_library(root, args.port, open_browser=not args.no_open, host=args.host)
 
 
 def cmd_app(args: argparse.Namespace) -> int:
     root = Path(args.dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
-    return serve_library(root, args.port, open_browser=not args.no_open)
+    return serve_library(root, args.port, open_browser=not args.no_open, host=args.host)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -91,12 +91,14 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--library", action="store_true", help="Add a back-link to the parent library")
     c.add_argument("--serve", action="store_true")
     c.add_argument("--port", type=int, default=8770)
+    c.add_argument("--host", default="127.0.0.1", help="Bind address. Use 0.0.0.0 for tablet/LAN")
     c.add_argument("--no-open", action="store_true")
     c.set_defaults(func=cmd_convert)
 
     s = sub.add_parser("serve", help="Serve a converted book, or a library folder")
     s.add_argument("dir")
     s.add_argument("--port", type=int, default=8770)
+    s.add_argument("--host", default="127.0.0.1", help="Bind address. Use 0.0.0.0 for tablet/LAN")
     s.add_argument("--app", action="store_true", help="Force library + upload UI")
     s.add_argument("--no-open", action="store_true")
     s.set_defaults(func=cmd_serve)
@@ -104,6 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("app", help="Open the library landing page and convert PDFs in the browser")
     a.add_argument("--dir", default="out", help="Folder of converted books")
     a.add_argument("--port", type=int, default=8770)
+    a.add_argument("--host", default="127.0.0.1", help="Bind address. Use 0.0.0.0 for tablet/LAN")
     a.add_argument("--no-open", action="store_true")
     a.set_defaults(func=cmd_app)
 

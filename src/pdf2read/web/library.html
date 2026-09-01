@@ -27,7 +27,7 @@
   <main>
     <p class="kicker" id="kicker">PDF → HTML</p>
     <h1 id="headline">PDF를 HTML로.</h1>
-    <p class="lead" id="lead">파일을 올리면 이 컴퓨터에서 바꿉니다. 번역은 Chrome이 합니다.</p>
+    <p class="lead" id="lead">이 컴퓨터에서 PDF를 HTML로 바꿉니다.</p>
 
     <form id="form" class="stage" aria-label="PDF">
       <input id="file" type="file" accept="application/pdf,.pdf" hidden>
@@ -52,7 +52,10 @@
     <section class="shelf">
       <div class="shelf-head">
         <h2 id="shelf-title">서재</h2>
-        <span id="count"></span>
+        <div class="shelf-tools">
+          <button type="button" class="chip" id="new-folder">새 폴더</button>
+          <span id="count"></span>
+        </div>
       </div>
       <div class="books" id="books"></div>
     </section>
