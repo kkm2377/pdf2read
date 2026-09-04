@@ -1,4 +1,10 @@
-from pdf2read.extract import clean_extracted_text, group_notes, structure_lines
+from pdf2read.extract import (
+    clean_extracted_text,
+    group_notes,
+    has_two_content_columns,
+    order_page_items,
+    structure_lines,
+)
 
 
 def test_check_widget_is_dropped():
@@ -102,3 +108,43 @@ def test_group_notes_keeps_wrapped_definition():
         {"text": "CHECK▶ □□□", "size": 8, "bold": False},
     ])
     assert notes == ""
+
+
+def test_indented_continuation_is_not_mistaken_for_two_columns():
+    layout = {
+        "mode": "two", "split_x": 294, "width": 420, "height": 595, "body_size": 9,
+    }
+    lines = [
+        {"text": f"본문 {i}", "size": 9, "x0": 42, "y0": 40 + i * 15}
+        for i in range(20)
+    ]
+    lines += [
+        {"text": "장애 건수, 복구 시간", "size": 9, "x0": 199, "y0": 370},
+        {"text": "가동률", "size": 9, "x0": 199, "y0": 385},
+    ]
+    assert not has_two_content_columns(lines, layout)
+    ordered = order_page_items(lines, layout, False)
+    assert [line["text"] for line in ordered][-3:] == [
+        "본문 19", "장애 건수, 복구 시간", "가동률",
+    ]
+
+
+def test_dense_two_up_page_reads_left_column_then_right():
+    layout = {
+        "mode": "two", "split_x": 294, "width": 420, "height": 595, "body_size": 9,
+    }
+    left = [
+        {"text": f"왼쪽 {i}", "size": 7, "x0": 62, "y0": 50 + i * 12}
+        for i in range(12)
+    ]
+    right = [
+        {"text": f"오른쪽 {i}", "size": 7, "x0": 233, "y0": 50 + i * 12}
+        for i in range(12)
+    ]
+    lines = [item for pair in zip(left, right) for item in pair]
+    assert has_two_content_columns(lines, layout)
+    ordered = order_page_items(lines, layout, True)
+    assert [line["text"] for line in ordered] == [
+        *(f"왼쪽 {i}" for i in range(12)),
+        *(f"오른쪽 {i}" for i in range(12)),
+    ]

@@ -5,6 +5,8 @@
       kicker: "PDF → HTML",
       headline: "PDF를 HTML로.",
       lead: "이 컴퓨터에서 PDF를 HTML로 바꿉니다.",
+      readHeadline: "HTML 서재.",
+      readLead: "맥 미니에 저장된 책을 읽습니다. 태블릿에서는 안전하게 읽기만 할 수 있습니다.",
       drop: "PDF를 놓거나 선택",
       hint: "로컬 변환 · 서버로 보내지 않습니다",
       convert: "변환",
@@ -20,6 +22,7 @@
       newFolder: "새 폴더",
       folderName: "폴더 이름",
       dropHere: "책을 여기로 끌어다 놓으세요",
+      emptyFolder: "빈 폴더",
       del: "삭제",
       delFolder: "폴더 삭제",
       confirmDel: "이 HTML을 이 컴퓨터에서 지울까요?",
@@ -30,6 +33,8 @@
       kicker: "PDF → HTML",
       headline: "PDF to HTML.",
       lead: "Convert a PDF to HTML on this computer.",
+      readHeadline: "HTML Library.",
+      readLead: "Read books stored on the Mac mini. Remote devices are safely read-only.",
       drop: "Drop or choose a PDF",
       hint: "Local convert · nothing is uploaded",
       convert: "Convert",
@@ -45,6 +50,7 @@
       newFolder: "New folder",
       folderName: "Folder name",
       dropHere: "Drop a book here",
+      emptyFolder: "Empty folder",
       del: "Delete",
       delFolder: "Delete folder",
       confirmDel: "Delete this HTML from this computer?",
@@ -55,6 +61,8 @@
       kicker: "PDF → HTML",
       headline: "PDFをHTMLに。",
       lead: "このコンピュータでPDFをHTMLにします。",
+      readHeadline: "HTML書庫。",
+      readLead: "Mac miniに保存した本を読みます。リモート端末は安全な読み取り専用です。",
       drop: "PDFを置くか選ぶ",
       hint: "ローカル変換 · 送信しません",
       convert: "変換",
@@ -70,6 +78,7 @@
       newFolder: "新しいフォルダ",
       folderName: "フォルダ名",
       dropHere: "本をここにドロップ",
+      emptyFolder: "空のフォルダ",
       del: "削除",
       delFolder: "フォルダを削除",
       confirmDel: "このHTMLをこのコンピュータから消しますか？",
@@ -96,12 +105,24 @@
   const newFolderBtn = document.getElementById("new-folder");
   let chosen = null;
   let folders = [];
+  let writable = true;
 
   function uiLang() {
     const v = localStorage.getItem("pdf2read-ui") || "ko";
     return COPY[v] ? v : "ko";
   }
   function t() { return COPY[uiLang()]; }
+
+  function applyCapabilities(canWrite) {
+    writable = canWrite;
+    form.hidden = !canWrite;
+    newFolderBtn.hidden = !canWrite;
+    document.body.dataset.writable = canWrite ? "true" : "false";
+    if (!canWrite) {
+      document.getElementById("headline").textContent = t().readHeadline;
+      document.getElementById("lead").textContent = t().readLead;
+    }
+  }
 
   function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
@@ -188,6 +209,8 @@
     try {
       const res = await fetch("/api/books");
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || c.fail);
+      applyCapabilities(data.writable !== false);
       const books = data.books || [];
       folders = data.folders || [];
       countEl.textContent = books.length ? String(books.length) : "";
@@ -210,10 +233,10 @@
           `<header class="folder-tab">` +
           `<span class="folder-icon" aria-hidden="true"></span>` +
           `<h3>${escapeHtml(f.name)}</h3>` +
-          `<button type="button" class="icon-del" data-del-folder="${escapeHtml(f.id)}" aria-label="${escapeHtml(c.delFolder)}">×</button>` +
+          (writable ? `<button type="button" class="icon-del" data-del-folder="${escapeHtml(f.id)}" aria-label="${escapeHtml(c.delFolder)}">×</button>` : "") +
           `</header>` +
           `<div class="folder-tray">` +
-          (list.length ? list.map((b) => cardHtml(b, c)).join("") : `<p class="drop-hint">${escapeHtml(c.dropHere)}</p>`) +
+          (list.length ? list.map((b) => cardHtml(b, c)).join("") : `<p class="drop-hint">${escapeHtml(writable ? c.dropHere : c.emptyFolder)}</p>`) +
           `</div></section>`
         );
       });
@@ -235,8 +258,8 @@
 
   function cardHtml(b, c) {
     return (
-      `<article class="book-card" draggable="true" data-book-id="${escapeHtml(b.id)}">` +
-      `<button type="button" class="icon-del" data-del="${escapeHtml(b.id)}" aria-label="${escapeHtml(c.del)}">×</button>` +
+      `<article class="book-card" ${writable ? 'draggable="true"' : ""} data-book-id="${escapeHtml(b.id)}">` +
+      (writable ? `<button type="button" class="icon-del" data-del="${escapeHtml(b.id)}" aria-label="${escapeHtml(c.del)}">×</button>` : "") +
       `<a href="${escapeHtml(b.href)}"><small>${b.units} ${escapeHtml(c.items)}</small>` +
       `<h3>${escapeHtml(b.title)}</h3></a>` +
       `</article>`
@@ -255,6 +278,7 @@
   }
 
   newFolderBtn.addEventListener("click", async () => {
+    if (!writable) return;
     const name = window.prompt(t().folderName);
     if (!name) return;
     try {
@@ -284,6 +308,7 @@
     }
   });
   booksEl.addEventListener("dragstart", (e) => {
+    if (!writable) return;
     const card = e.target.closest("[data-book-id]");
     if (!card || e.target.closest(".icon-del")) return;
     e.dataTransfer.setData("text/plain", card.getAttribute("data-book-id"));
@@ -323,6 +348,7 @@
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const c = t();
+    if (!writable) return;
     if (!chosen) {
       statusEl.textContent = c.pick;
       file.click();
@@ -336,34 +362,32 @@
     progress.hidden = false;
     logEl.hidden = true;
     statusEl.textContent = c.converting;
-    const res = await fetch("/api/convert", { method: "POST", body });
-    const job = await res.json();
-    if (!res.ok) {
-      statusEl.textContent = job.error || c.fail;
+    try {
+      const res = await fetch("/api/convert", { method: "POST", body });
+      const job = await res.json();
+      if (!res.ok) throw new Error(job.error || c.fail);
+      while (true) {
+        await new Promise((r) => setTimeout(r, 600));
+        const poll = await fetch("/api/jobs/" + encodeURIComponent(job.id));
+        const st = await poll.json();
+        if (!poll.ok) throw new Error(st.error || c.fail);
+        if ((st.log || []).length) {
+          logEl.hidden = false;
+          logEl.textContent = st.log.join("\n");
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+        if (st.status === "done") {
+          statusEl.textContent = c.done;
+          progress.hidden = true;
+          location.href = st.href;
+          return;
+        }
+        if (st.status === "error") throw new Error(st.error || c.fail);
+      }
+    } catch (err) {
+      statusEl.textContent = err.message || c.fail;
       go.disabled = false;
       progress.hidden = true;
-      return;
-    }
-    while (true) {
-      await new Promise((r) => setTimeout(r, 600));
-      const st = await fetch("/api/jobs/" + job.id).then((r) => r.json());
-      if ((st.log || []).length) {
-        logEl.hidden = false;
-        logEl.textContent = st.log.join("\n");
-        logEl.scrollTop = logEl.scrollHeight;
-      }
-      if (st.status === "done") {
-        statusEl.textContent = c.done;
-        progress.hidden = true;
-        location.href = st.href;
-        return;
-      }
-      if (st.status === "error") {
-        statusEl.textContent = st.error || c.fail;
-        go.disabled = false;
-        progress.hidden = true;
-        return;
-      }
     }
   });
 })();

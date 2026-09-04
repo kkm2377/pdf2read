@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import re
 import shutil
 import subprocess
@@ -11,7 +12,7 @@ from email import policy
 from email.parser import BytesParser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from pdf2read.convert import convert_book
 
@@ -113,11 +114,21 @@ def unique_dest(folder: Path, name: str) -> Path:
     return dest
 
 
+def _content_length(handler: SimpleHTTPRequestHandler, maximum: int) -> int:
+    try:
+        length = int(handler.headers.get("Content-Length") or 0)
+    except ValueError as exc:
+        raise ValueError("invalid content length") from exc
+    if length < 0 or length > maximum:
+        raise ValueError("file too large" if length > maximum else "invalid content length")
+    return length
+
+
 def _parse_multipart(handler: SimpleHTTPRequestHandler) -> tuple[dict, dict]:
     ctype = handler.headers.get("Content-Type", "")
-    length = int(handler.headers.get("Content-Length") or 0)
-    if length > MAX_UPLOAD:
-        raise ValueError("file too large")
+    if "multipart/form-data" not in ctype.lower():
+        raise ValueError("invalid form data")
+    length = _content_length(handler, MAX_UPLOAD)
     body = handler.rfile.read(length)
     msg = BytesParser(policy=policy.default).parsebytes(
         b"Content-Type: " + ctype.encode() + b"\r\n\r\n" + body
@@ -141,7 +152,27 @@ def _parse_multipart(handler: SimpleHTTPRequestHandler) -> tuple[dict, dict]:
     return fields, files
 
 
-def make_handler(root: Path):
+def _is_loopback(address: str) -> bool:
+    try:
+        return ipaddress.ip_address(address).is_loopback
+    except ValueError:
+        return address == "localhost"
+
+
+def _can_write(address: str, allow_remote_write: bool) -> bool:
+    return allow_remote_write or _is_loopback(address)
+
+
+def _safe_static_target(root: Path, translated_path: str) -> bool:
+    try:
+        target = Path(translated_path).resolve()
+        rel = target.relative_to(root.resolve())
+    except (OSError, ValueError):
+        return False
+    return not any(part.startswith(".") for part in rel.parts)
+
+
+def make_handler(root: Path, allow_remote_write: bool = False):
     root = root.resolve()
     root.mkdir(parents=True, exist_ok=True)
 
@@ -151,6 +182,9 @@ def make_handler(root: Path):
 
         def log_message(self, fmt, *rest):
             print(fmt % rest, flush=True)
+
+        def _request_can_write(self) -> bool:
+            return _can_write(self.client_address[0], allow_remote_write)
 
         def _json(self, code: int, data: dict):
             raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -171,7 +205,7 @@ def make_handler(root: Path):
 
         def do_GET(self):
             parsed = urlparse(self.path)
-            path = parsed.path
+            path = unquote(parsed.path)
             if path in {"/", "/index.html"}:
                 self._send_file(WEB_DIR / "library.html", "text/html; charset=utf-8")
                 return
@@ -182,7 +216,9 @@ def make_handler(root: Path):
                 self._send_file(WEB_DIR / "library.js", "text/javascript; charset=utf-8")
                 return
             if path == "/api/books":
-                self._json(200, list_library(root))
+                data = list_library(root)
+                data["writable"] = self._request_can_write()
+                self._json(200, data)
                 return
             if path.startswith("/api/jobs/"):
                 job_id = path.rsplit("/", 1)[-1]
@@ -193,18 +229,22 @@ def make_handler(root: Path):
                     return
                 self._json(200, job)
                 return
+            if not _safe_static_target(root, self.translate_path(path)):
+                self.send_error(404)
+                return
             return super().do_GET()
 
         def _read_json(self) -> dict:
-            length = int(self.headers.get("Content-Length") or 0)
-            if length > 1_000_000:
-                raise ValueError("too large")
+            length = _content_length(self, 1_000_000)
             raw = self.rfile.read(length) if length else b"{}"
             return json.loads(raw or b"{}")
 
         def do_POST(self):
             parsed = urlparse(self.path)
             path = parsed.path
+            if path.startswith("/api/") and not self._request_can_write():
+                self._json(403, {"error": "태블릿에서는 읽기만 할 수 있습니다."})
+                return
             if path == "/api/convert":
                 return self._convert()
             if path == "/api/folder":
@@ -371,14 +411,20 @@ class Server(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
-def serve_library(root: Path, port: int, open_browser: bool = True, host: str = "127.0.0.1") -> int:
-    handler = make_handler(root)
+def serve_library(
+    root: Path,
+    port: int,
+    open_browser: bool = True,
+    host: str = "127.0.0.1",
+    allow_remote_write: bool = False,
+) -> int:
+    handler = make_handler(root, allow_remote_write=allow_remote_write)
     server = Server((host, port), handler)
     url = f"http://{host}:{port}/"
     print(url, flush=True)
     print(f"library: {root}", flush=True)
     if host not in {"127.0.0.1", "localhost"}:
-        print("같은 Wi-Fi 또는 Tailscale 주소로 태블릿에서 여세요.", flush=True)
+        print("같은 Wi-Fi 또는 Tailscale 주소로 태블릿에서 여세요 (기본: 읽기 전용).", flush=True)
     if open_browser:
         def _open():
             time.sleep(0.4)

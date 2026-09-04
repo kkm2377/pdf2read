@@ -357,6 +357,7 @@ h1 {
   backdrop-filter: blur(12px);
   transition: transform 0.18s ease, border-color 0.18s ease;
 }
+body[data-writable="false"] .book-card { cursor: pointer; }
 .book-card .icon-del {
   position: absolute;
   top: 8px;
@@ -396,7 +397,7 @@ h1 {
 @media (max-width: 640px) {
   .nav { padding: 14px 20px; }
   main { padding-top: 40px; }
-  .books { grid-template-columns: 1fr; }
+  .books, .folder-tray { grid-template-columns: 1fr; }
   h1 { font-size: 2.2rem; }
 }
 

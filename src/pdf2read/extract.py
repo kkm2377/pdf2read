@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+from collections import Counter
 from pathlib import Path
 
 NOTE_LABELS = (
@@ -62,6 +63,33 @@ def line_inside_box(L: dict, box, pad: float = 2) -> bool:
     cx = (L["x0"] + L["x1"]) / 2
     cy = (L["y0"] + L["y1"]) / 2
     return box[0] - pad <= cx <= box[2] + pad and box[1] - pad <= cy <= box[3] + pad
+
+
+def has_two_content_columns(lines: list[dict], layout: dict) -> bool:
+    """Detect dense two-up content inside the main area (not the narrow notes column)."""
+    split = layout["split_x"] if layout["mode"] == "two" else layout["width"]
+    body = layout["body_size"]
+    width = layout["width"]
+    candidates = [
+        L for L in lines
+        if L["size"] >= body * 0.74
+        and L["y0"] > 30
+        and L["x0"] < split
+        and len(clean_extracted_text(L["text"])) >= 3
+    ]
+    left = [L for L in candidates if L["x0"] < width * 0.4]
+    right = [L for L in candidates if width * 0.45 <= L["x0"] < split]
+    if len(left) < 10 or len(right) < 10:
+        return False
+    right_bins = Counter(int(L["x0"] // 16) * 16 for L in right)
+    return bool(right_bins and right_bins.most_common(1)[0][1] >= 5)
+
+
+def order_page_items(items: list[dict], layout: dict, two_up: bool) -> list[dict]:
+    if not two_up:
+        return sorted(items, key=lambda L: (L["y0"], L["x0"]))
+    mid = layout["width"] * 0.45
+    return sorted(items, key=lambda L: (0 if L["x0"] < mid else 1, L["y0"], L["x0"]))
 
 
 def esc(s: str) -> str:
@@ -644,7 +672,8 @@ def extract_unit(doc, unit, layout: dict, headers: set[str], assets: Path) -> tu
                 tboxes.append(bbox)
                 extras.append({
                     "text": "", "html": html_t, "special": "table",
-                    "y0": bbox[1], "x0": 40, "page": pn, "size": 10, "bold": False, "color": 0, "x1": 41, "y1": bbox[1],
+                    "y0": bbox[1], "x0": bbox[0], "page": pn, "size": 10, "bold": False,
+                    "color": 0, "x1": bbox[2], "y1": bbox[3],
                 })
         figs = find_figures(page, layout)
         clip_figures(page, figs, assets, f"fig-p{pn:03d}")
@@ -653,6 +682,7 @@ def extract_unit(doc, unit, layout: dict, headers: set[str], assets: Path) -> tu
         callboxes = [c["clip"] for c in callouts]
         skip_boxes = tboxes + figboxes + callboxes
         all_lines = lines_from_page(page)
+        two_up = has_two_content_columns(all_lines, layout)
         main, side = [], []
         for L in all_lines:
             L = dict(L)
@@ -662,14 +692,15 @@ def extract_unit(doc, unit, layout: dict, headers: set[str], assets: Path) -> tu
             if any(line_inside_box(L, b) for b in skip_boxes):
                 continue
             L["page"] = pn
-            if layout["mode"] == "two" and L["x0"] >= split:
+            if not two_up and layout["mode"] == "two" and L["x0"] >= split:
                 side.append(L)
             else:
                 main.append(L)
         notes_all.extend(side)
         for fig in figs:
             extras.append({
-                "text": "", "special": "fig", "page": pn, "y0": fig["clip"][1], "x0": 40, "x1": 41, "y1": fig["clip"][1],
+                "text": "", "special": "fig", "page": pn, "y0": fig["clip"][1],
+                "x0": fig["clip"][0], "x1": fig["clip"][2], "y1": fig["clip"][3],
                 "size": 10, "bold": False, "color": 0,
                 "html": (
                     f'<figure class="diagram"><img src="assets/{fig["file"]}" alt="{esc(fig["caption"])}">'
@@ -681,19 +712,10 @@ def extract_unit(doc, unit, layout: dict, headers: set[str], assets: Path) -> tu
             if not html_c:
                 continue
             extras.append({
-                "text": "", "special": "callout", "page": pn, "y0": box["y0"], "x0": 40, "x1": 41, "y1": box["y0"],
+                "text": "", "special": "callout", "page": pn, "y0": box["y0"],
+                "x0": box["clip"][0], "x1": box["clip"][2], "y1": box["clip"][3],
                 "size": 10, "bold": False, "color": 0, "html": html_c,
             })
-        kept_all.extend(main)
-        kept_all.extend(extras)
-    mid = split * 0.52
-    kept_all.sort(
-        key=lambda L: (
-            L.get("page", 0),
-            0 if L.get("special") or L["x0"] < mid else 1,
-            L["y0"],
-            L["x0"],
-        )
-    )
+        kept_all.extend(order_page_items(main + extras, layout, two_up))
     blocks = structure_lines(kept_all, layout["body_size"])
     return render_blocks(blocks, unit.title), group_notes(notes_all)

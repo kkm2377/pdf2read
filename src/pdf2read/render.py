@@ -236,11 +236,17 @@ def render_index(book: dict, units: list[Unit], ui: dict, src_lang: str) -> str:
   <script src="viewer/viewer.js"></script>
   <script>
     try {{
-      const book = (window.BOOK_NAV || {{}}).bookId;
+      const nav = window.BOOK_NAV || {{}};
+      const book = nav.bookId;
       const last = JSON.parse(localStorage.getItem("pdf2read-" + book) || "null");
       const slot = document.getElementById("resume-slot");
-      if (last && slot) {{
-        slot.innerHTML = '<a class="nav-link" href="' + last.file + '">{esc(ui["resume"])}: ' + last.no + "　" + last.title + "</a>";
+      const page = last && (nav.pages || []).find((p) => p.id === last.id);
+      if (page && slot) {{
+        const link = document.createElement("a");
+        link.className = "nav-link";
+        link.href = page.file;
+        link.textContent = "{esc(ui["resume"])}: " + page.no + "　" + page.title;
+        slot.replaceChildren(link);
       }}
     }} catch (e) {{}}
   </script>

@@ -9,7 +9,7 @@
 - `out/`, 원본 PDF, 시험 교재를 git에 커밋·푸시하지 말 것 (저작권)
 - GitHub Pages 등 공개 호스팅에 변환 HTML을 올리지 말 것
 - 공유기 포트포워드(외부에 8770 열기)는 하지 말 것. 집 밖 접속은 Tailscale만 사용
-- `file://` 로 HTML을 열지 말 것. Chrome 번역이 불안정함
+- `file://` 로 HTML을 열지 말 것. 서재 이동과 상대 경로가 불안정함
 
 ## 1. 코드 받기
 
@@ -61,6 +61,11 @@ source .venv/bin/activate
 python -m pdf2read app --dir out --port 8770 --host 0.0.0.0 --no-open
 ```
 
+이 상태에서 맥 미니의 `http://127.0.0.1:8770/`은 변환·폴더 이동·삭제가 가능하고,
+태블릿의 LAN/Tailscale 주소는 자동으로 **읽기 전용**이 됩니다. 따라서 태블릿을 분실하거나
+같은 Wi-Fi에 다른 사람이 있어도 원격으로 책을 지울 수 없습니다.
+`--allow-remote-write`는 특별한 이유가 없는 한 사용하지 마세요.
+
 이 터미널은 끄지 마세요. 맥 미니는 공부하는 동안 잠자기 금지:
 
 - 시스템 설정 → 에너지 → 디스플레이가 꺼져도 잠자지 않기 (또는 `caffeinate`를 서버와 같이 실행)
@@ -76,7 +81,6 @@ caffeinate -s python -m pdf2read app --dir out --port 8770 --host 0.0.0.0 --no-o
 1. 맥 미니와 태블릿이 **같은 Wi-Fi**
 2. 맥 미니 LAN IP 확인: 시스템 설정 → 네트워크, 또는 `ipconfig getifaddr en0` (이더넷은 `en1`일 수 있음)
 3. 태블릿 **Chrome**에서 `http://그IP:8770/` 을 연다
-4. 페이지 번역은 Chrome 번역을 사용
 
 macOS 방화벽이 켜져 있으면 Python이 8770을 받도록 허용하세요.
 
@@ -96,8 +100,8 @@ macOS 방화벽이 켜져 있으면 Python이 8770을 받도록 허용하세요.
 - [ ] `git pull` 한 `main` 이 GitHub와 같음
 - [ ] `out/` 에 책이 있고 서재에 보임
 - [ ] 맥 미니 브라우저 `http://127.0.0.1:8770/`
-- [ ] 같은 Wi-Fi 태블릿 Chrome `http://LAN_IP:8770/`
-- [ ] Tailscale 설치 후 태블릿 `http://TAILSCALE_IP:8770/`
+- [ ] 같은 Wi-Fi 태블릿 Chrome `http://LAN_IP:8770/` (읽기 전용)
+- [ ] Tailscale 설치 후 태블릿 `http://TAILSCALE_IP:8770/` (읽기 전용)
 - [ ] PDF·`out/` 을 git에 올리지 않음
 
 끝나면 사용자에게 **LAN 주소**와 **Tailscale 주소** 두 개를 알려 주세요.

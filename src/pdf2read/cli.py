@@ -26,7 +26,13 @@ def cmd_convert(args: argparse.Namespace) -> int:
     if args.serve:
         root = Path(args.out).expanduser().resolve()
         if args.library:
-            return serve_library(root.parent, args.port, open_browser=not args.no_open, host=args.host)
+            return serve_library(
+                root.parent,
+                args.port,
+                open_browser=not args.no_open,
+                host=args.host,
+                allow_remote_write=args.allow_remote_write,
+            )
         return _serve_book(root, args.port, host=args.host)
     print(f"Open with: python -m pdf2read app --dir {Path(args.out).parent} --port {args.port}")
     print(f"  or a single book: python -m pdf2read serve {result['out']} --port {args.port}")
@@ -64,19 +70,31 @@ def cmd_serve(args: argparse.Namespace) -> int:
         if not (root / "index.html").exists():
             raise SystemExit(f"No index.html in {root}")
         return _serve_book(root, args.port, host=args.host)
-    return serve_library(root, args.port, open_browser=not args.no_open, host=args.host)
+    return serve_library(
+        root,
+        args.port,
+        open_browser=not args.no_open,
+        host=args.host,
+        allow_remote_write=args.allow_remote_write,
+    )
 
 
 def cmd_app(args: argparse.Namespace) -> int:
     root = Path(args.dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
-    return serve_library(root, args.port, open_browser=not args.no_open, host=args.host)
+    return serve_library(
+        root,
+        args.port,
+        open_browser=not args.no_open,
+        host=args.host,
+        allow_remote_write=args.allow_remote_write,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="pdf2read",
-        description="PDF textbook → HTML viewer you can translate in Chrome",
+        description="Convert a selectable-text PDF into a readable HTML viewer",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -92,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--serve", action="store_true")
     c.add_argument("--port", type=int, default=8770)
     c.add_argument("--host", default="127.0.0.1", help="Bind address. Use 0.0.0.0 for tablet/LAN")
+    c.add_argument("--allow-remote-write", action="store_true", help="Allow remote convert/move/delete (unsafe)")
     c.add_argument("--no-open", action="store_true")
     c.set_defaults(func=cmd_convert)
 
@@ -99,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("dir")
     s.add_argument("--port", type=int, default=8770)
     s.add_argument("--host", default="127.0.0.1", help="Bind address. Use 0.0.0.0 for tablet/LAN")
+    s.add_argument("--allow-remote-write", action="store_true", help="Allow remote convert/move/delete (unsafe)")
     s.add_argument("--app", action="store_true", help="Force library + upload UI")
     s.add_argument("--no-open", action="store_true")
     s.set_defaults(func=cmd_serve)
@@ -107,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--dir", default="out", help="Folder of converted books")
     a.add_argument("--port", type=int, default=8770)
     a.add_argument("--host", default="127.0.0.1", help="Bind address. Use 0.0.0.0 for tablet/LAN")
+    a.add_argument("--allow-remote-write", action="store_true", help="Allow remote convert/move/delete (unsafe)")
     a.add_argument("--no-open", action="store_true")
     a.set_defaults(func=cmd_app)
 
