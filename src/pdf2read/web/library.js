@@ -105,7 +105,7 @@
   const newFolderBtn = document.getElementById("new-folder");
   let chosen = null;
   let folders = [];
-  let writable = true;
+  let writable = false;
 
   function uiLang() {
     const v = localStorage.getItem("pdf2read-ui") || "ko";
@@ -150,6 +150,7 @@
 
   const savedTheme = localStorage.getItem("pdf2read-theme")
     || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  applyCapabilities(false);
   applyTheme(savedTheme);
   applyCopy();
 
@@ -252,6 +253,7 @@
       }
       booksEl.innerHTML = blocks.join("");
     } catch (e) {
+      applyCapabilities(false);
       booksEl.innerHTML = `<p class="empty">${escapeHtml(c.fail)}</p>`;
     }
   }
@@ -366,7 +368,9 @@
       const res = await fetch("/api/convert", { method: "POST", body });
       const job = await res.json();
       if (!res.ok) throw new Error(job.error || c.fail);
+      const deadline = Date.now() + 2 * 60 * 60 * 1000;
       while (true) {
+        if (Date.now() > deadline) throw new Error(c.fail);
         await new Promise((r) => setTimeout(r, 600));
         const poll = await fetch("/api/jobs/" + encodeURIComponent(job.id));
         const st = await poll.json();

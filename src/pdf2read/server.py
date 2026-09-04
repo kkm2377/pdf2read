@@ -242,6 +242,9 @@ def make_handler(root: Path, allow_remote_write: bool = False):
         def do_POST(self):
             parsed = urlparse(self.path)
             path = parsed.path
+            if path == "/api/reveal" and not _is_loopback(self.client_address[0]):
+                self._json(403, {"error": "폴더 열기는 맥에서만 사용할 수 있습니다."})
+                return
             if path.startswith("/api/") and not self._request_can_write():
                 self._json(403, {"error": "태블릿에서는 읽기만 할 수 있습니다."})
                 return
@@ -319,6 +322,9 @@ def make_handler(root: Path, allow_remote_write: bool = False):
                 if dest_dir != root and is_book_dir(dest_dir):
                     raise ValueError("책 안으로 옮길 수 없습니다.")
                 dest_dir.mkdir(parents=True, exist_ok=True)
+                if src.parent.resolve() == dest_dir.resolve():
+                    self._json(200, list_library(root))
+                    return
                 dest = unique_dest(dest_dir, src.name)
                 shutil.move(str(src), str(dest))
             except ValueError as e:
@@ -332,12 +338,20 @@ def make_handler(root: Path, allow_remote_write: bool = False):
                 target = safe_rel(root, str(data.get("id") or ""))
                 if target == root:
                     raise ValueError("서재 전체는 지울 수 없습니다.")
-                if target.is_dir():
+                if is_book_dir(target):
                     shutil.rmtree(target)
-                elif target.is_file():
-                    target.unlink()
-                else:
+                elif target.is_dir() and target.parent.resolve() == root:
+                    children = [
+                        child for child in target.iterdir()
+                        if child.name not in SKIP_NAMES and not child.name.startswith(".")
+                    ]
+                    if any(not child.is_dir() or not is_book_dir(child) for child in children):
+                        raise ValueError("서재 폴더와 변환된 책만 지울 수 있습니다.")
+                    shutil.rmtree(target)
+                elif not target.exists():
                     raise ValueError("찾을 수 없습니다.")
+                else:
+                    raise ValueError("서재 폴더와 변환된 책만 지울 수 있습니다.")
             except ValueError as e:
                 self._json(400, {"error": str(e)})
                 return
@@ -421,6 +435,7 @@ def serve_library(
     handler = make_handler(root, allow_remote_write=allow_remote_write)
     server = Server((host, port), handler)
     url = f"http://{host}:{port}/"
+    browser_url = f"http://{'127.0.0.1' if host in {'0.0.0.0', '::'} else host}:{port}/"
     print(url, flush=True)
     print(f"library: {root}", flush=True)
     if host not in {"127.0.0.1", "localhost"}:
@@ -430,7 +445,7 @@ def serve_library(
             time.sleep(0.4)
             try:
                 import webbrowser
-                webbrowser.open(url)
+                webbrowser.open(browser_url)
             except Exception:
                 pass
         threading.Thread(target=_open, daemon=True).start()

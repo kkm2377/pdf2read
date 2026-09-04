@@ -2,7 +2,10 @@ from pdf2read.extract import (
     clean_extracted_text,
     group_notes,
     has_two_content_columns,
+    line_inside_box,
     order_page_items,
+    stitch_checkbox_items,
+    stitch_question_marks,
     structure_lines,
 )
 
@@ -31,6 +34,38 @@ def test_structure_does_not_treat_checkboxes_as_remember():
     assert "remember" not in kinds
 
 
+def test_standalone_checkbox_and_text_become_remember_item():
+    lines = [
+        {
+            "text": "□", "size": 8, "bold": False, "color": 0,
+            "x0": 40, "y0": 529, "x1": 48, "y1": 539,
+        },
+        {
+            "text": "機密性，完全性，可用性を維持すること", "size": 8, "bold": False, "color": 0,
+            "x0": 59, "y0": 529, "x1": 250, "y1": 539,
+        },
+    ]
+    stitched = stitch_checkbox_items(lines)
+    assert len(stitched) == 1
+    assert stitched[0]["text"].startswith("□ ")
+    blocks = structure_lines([{**stitched[0], "page": 50}], 9)
+    assert blocks == [("remember", ["機密性，完全性，可用性を維持すること"])]
+
+
+def test_question_number_is_not_joined_across_page():
+    lines = [
+        {
+            "text": "問", "size": 11, "bold": False, "color": 0,
+            "x0": 75, "y0": 100, "x1": 90, "y1": 115,
+        },
+        {
+            "text": "1", "size": 24, "bold": False, "color": 0,
+            "x0": 300, "y0": 100, "x1": 315, "y1": 120,
+        },
+    ]
+    assert [line["text"] for line in stitch_question_marks(lines)] == ["問", "1"]
+
+
 def test_leader_dots_become_ellipsis():
     garbage = "\u029c" * 4
     assert (
@@ -50,6 +85,45 @@ def test_bullet_lines_are_list_items_not_headings():
     assert blocks[0] == ("h3", "プロジェクト憲章")
     assert all(k == "item" for k, _ in blocks[1:])
     assert not any(k == "h3" and str(v).startswith("•") for k, v in blocks)
+
+
+def test_choices_require_a_question_and_only_join_indented_wraps():
+    lines = [
+        {"text": "通常の説明です。", "size": 9, "bold": False, "page": 1, "x0": 42, "y0": 40},
+        {"text": "ア これは一般段落です。", "size": 9, "bold": False, "page": 1, "x0": 42, "y0": 55},
+        {"text": "問1", "size": 12, "bold": True, "page": 1, "x0": 42, "y0": 90},
+        {"text": "適切なものはどれか。", "size": 9, "bold": False, "page": 1, "x0": 42, "y0": 105},
+        {"text": "ア 長い選択肢の前半", "size": 9, "bold": False, "page": 1, "x0": 54, "y0": 120},
+        {"text": "後半です。", "size": 9, "bold": False, "page": 1, "x0": 72, "y0": 135},
+        {"text": "イ 句点のない選択肢", "size": 9, "bold": False, "page": 1, "x0": 54, "y0": 150},
+        {"text": "次の本文です。", "size": 9, "bold": False, "page": 1, "x0": 42, "y0": 180},
+    ]
+    blocks = structure_lines(lines, 9)
+    choices = next(value for kind, value in blocks if kind == "choices")
+    assert choices == [("ア", "長い選択肢の前半後半です。"), ("イ", "句点のない選択肢")]
+    assert any(kind == "p" and "ア これは一般段落です。" in value for kind, value in blocks)
+    assert any(kind == "p" and value == "次の本文です。" for kind, value in blocks)
+
+
+def test_latin_range_in_question_is_not_a_choice():
+    lines = [
+        {"text": "問1", "size": 12, "bold": True, "page": 1, "x0": 42, "y0": 40},
+        {"text": "a 〜dのうち，適切なものはどれか。", "size": 9, "bold": False, "page": 1, "x0": 42, "y0": 55},
+    ]
+    assert not any(kind == "choices" for kind, _ in structure_lines(lines, 9))
+
+
+def test_figure_box_preserves_body_sized_sentence():
+    box = (30, 170, 340, 390)
+    body = {
+        "text": "資産には，商品や不動産など形のあるものだけでなく，顧客情報も含まれます。",
+        "size": 9, "x0": 42, "y0": 180, "x1": 278, "y1": 192,
+    }
+    label = {
+        "text": "顧客情報", "size": 7, "x0": 99, "y0": 204, "x1": 127, "y1": 214,
+    }
+    assert not line_inside_box(body, box, preserve_body=True, body_size=9)
+    assert line_inside_box(label, box, preserve_body=True, body_size=9)
 
 
 def test_control_chars_stripped():

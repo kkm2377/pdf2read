@@ -83,3 +83,55 @@ def test_remote_http_cannot_create_folder(tmp_path: Path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_move_to_current_folder_is_noop(tmp_path: Path):
+    book = tmp_path / "study" / "book"
+    (book / "viewer").mkdir(parents=True)
+    (book / "viewer" / "nav-data.js").write_text("window.BOOK_NAV = {};", encoding="utf-8")
+
+    server = Server(("127.0.0.1", 0), make_handler(tmp_path))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        body = json.dumps({"id": "study/book", "folder": "study"}).encode()
+        conn = HTTPConnection("127.0.0.1", server.server_port, timeout=2)
+        conn.request(
+            "POST", "/api/move", body=body,
+            headers={"Content-Type": "application/json", "Content-Length": str(len(body))},
+        )
+        response = conn.getresponse()
+        response.read()
+        assert response.status == 200
+        assert book.exists()
+        assert not (tmp_path / "study" / "book-2").exists()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_delete_rejects_non_library_directory(tmp_path: Path):
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "keep.txt").write_text("important", encoding="utf-8")
+
+    server = Server(("127.0.0.1", 0), make_handler(tmp_path))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        body = json.dumps({"id": "notes"}).encode()
+        conn = HTTPConnection("127.0.0.1", server.server_port, timeout=2)
+        conn.request(
+            "POST", "/api/delete", body=body,
+            headers={"Content-Type": "application/json", "Content-Length": str(len(body))},
+        )
+        response = conn.getresponse()
+        error = json.loads(response.read())
+        assert response.status == 400
+        assert "변환된 책" in error["error"]
+        assert (notes / "keep.txt").exists()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

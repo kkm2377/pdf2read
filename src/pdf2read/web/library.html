@@ -42,12 +42,12 @@
         <em id="filename"></em>
       </button>
       <div class="stage-bar">
-        <span class="status" id="status"></span>
+        <span class="status" id="status" role="status" aria-live="polite"></span>
         <button type="submit" id="go">변환</button>
       </div>
     </form>
-    <div class="progress" id="progress" hidden><i></i></div>
-    <pre class="log" id="log" hidden></pre>
+    <div class="progress" id="progress" role="progressbar" aria-label="변환 중" hidden><i></i></div>
+    <pre class="log" id="log" aria-live="polite" hidden></pre>
 
     <section class="shelf">
       <div class="shelf-head">

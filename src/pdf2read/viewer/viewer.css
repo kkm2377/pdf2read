@@ -365,7 +365,11 @@ figcaption {
 }
 
 body.ebook { padding-bottom: 76px; }
-.ebook-rail { position: sticky; top: 0; z-index: 30; }
+.ebook-rail {
+  position: sticky;
+  top: var(--chrome-bar-height, 0);
+  z-index: 30;
+}
 .ebook-top {
   display: flex;
   align-items: center;

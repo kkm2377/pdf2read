@@ -18,6 +18,7 @@ HEAD_START = re.compile(
 )
 CHOICE = re.compile(r"^([ア-ンA-Da-d])[\s　\.．、](.*)$")
 QHEAD = re.compile(r"^問\s*\d+")
+SENTENCE_END = ("。", "？", "！", "．")
 BOX_CHARS = "□■▢☐◻▪▫"
 CHECK_WIDGET = re.compile(rf"CHECK\s*[▶▷►>]\s*[{BOX_CHARS}\s]*")
 ONLY_BOXES = re.compile(rf"^[{BOX_CHARS}\s]+$")
@@ -40,21 +41,17 @@ def clean_extracted_text(t: str) -> str:
 
 def is_duplicate_title(t: str, extra: set[str] | None) -> bool:
     """True only when the line *is* a running title, not a sentence that starts with it."""
-    if not extra or not t:
-        return False
-    if t in extra:
-        return True
-    if re.search(r"[。、．，!！?？]", t) or len(t) >= 28:
-        return False
-    for e in extra:
-        if not e or len(e) < 4:
-            continue
-        if e.startswith(t) and 8 <= len(t) < len(e):
-            return True
-    return False
+    return bool(extra and t and t in extra)
 
 
-def line_inside_box(L: dict, box, pad: float = 2) -> bool:
+def line_inside_box(
+    L: dict,
+    box,
+    pad: float = 2,
+    *,
+    preserve_body: bool = False,
+    body_size: float = 9,
+) -> bool:
     """Skip figure *labels*, not body lines that merely wrap around a diagram."""
     lw = L["x1"] - L["x0"]
     bw = box[2] - box[0]
@@ -62,7 +59,14 @@ def line_inside_box(L: dict, box, pad: float = 2) -> bool:
         return False
     cx = (L["x0"] + L["x1"]) / 2
     cy = (L["y0"] + L["y1"]) / 2
-    return box[0] - pad <= cx <= box[2] + pad and box[1] - pad <= cy <= box[3] + pad
+    inside = box[0] - pad <= cx <= box[2] + pad and box[1] - pad <= cy <= box[3] + pad
+    if not inside:
+        return False
+    if preserve_body:
+        text = clean_extracted_text(L["text"])
+        if L["size"] >= body_size * 0.9 and len(text) >= 12:
+            return False
+    return True
 
 
 def has_two_content_columns(lines: list[dict], layout: dict) -> bool:
@@ -139,7 +143,47 @@ def lines_from_page(page, clip=None) -> list[dict]:
                 "x0": bbox[0], "y0": bbox[1], "x1": bbox[2], "y1": bbox[3],
             })
     out.sort(key=lambda L: (L["y0"], L["x0"]))
-    return stitch_question_marks(out)
+    return stitch_question_marks(stitch_checkbox_items(out))
+
+
+def stitch_checkbox_items(lines: list[dict]) -> list[dict]:
+    """Join a standalone □ marker with the text printed immediately to its right."""
+    markers = [
+        i for i, line in enumerate(lines)
+        if re.fullmatch(r"[□▢☐◻]+", line["text"].strip())
+    ]
+    if not markers:
+        return lines
+    used: set[int] = set()
+    merged: list[dict] = []
+    for marker_i in markers:
+        marker = lines[marker_i]
+        best = None
+        for i, line in enumerate(lines):
+            if i == marker_i or i in used or i in markers:
+                continue
+            if abs(line["y0"] - marker["y0"]) > 2.5:
+                continue
+            gap = line["x0"] - marker["x1"]
+            if gap < -1 or gap > 36:
+                continue
+            if best is None or gap < best[0]:
+                best = (gap, i)
+        if best is None:
+            continue
+        text_i = best[1]
+        text_line = lines[text_i]
+        item = dict(text_line)
+        item["text"] = marker["text"].strip() + " " + text_line["text"].strip()
+        item["x0"] = marker["x0"]
+        item["y0"] = min(marker["y0"], text_line["y0"])
+        item["y1"] = max(marker["y1"], text_line["y1"])
+        used.update({marker_i, text_i})
+        merged.append(item)
+    out = [line for i, line in enumerate(lines) if i not in used]
+    out.extend(merged)
+    out.sort(key=lambda L: (L["y0"], L["x0"]))
+    return out
 
 
 def stitch_question_marks(lines: list[dict]) -> list[dict]:
@@ -166,7 +210,8 @@ def stitch_question_marks(lines: list[dict]) -> list[dict]:
             mL = lines[mi]
             if abs(mL["y0"] - nL["y0"]) > 30:
                 continue
-            if mL["x0"] > nL["x0"] + 12:
+            horizontal_gap = nL["x0"] - mL["x1"]
+            if horizontal_gap < -4 or horizontal_gap > 60:
                 continue
             dist = abs(mL["y0"] - nL["y0"]) + abs(mL["x0"] - nL["x0"])
             if best is None or dist < best[0]:
@@ -417,10 +462,10 @@ def is_heading(text: str, size: float, bold: bool, body: float) -> str | None:
         return None
     if t.startswith("●") and 3 <= len(t) <= 28 and "。" not in t:
         return "h3"
-    if bold and 2 <= len(t) <= 22 and size >= body * 0.95 and not t.endswith(("。", "、", "です", "ます")):
+    if bold and 2 <= len(t) <= 22 and size >= body * 0.95 and not t.endswith(("。", "．", "、", "です", "ます")):
         if not HEAD_START.match(t) and not ITEM_START.match(t):
             return "h3"
-    if size >= body * 1.22 and 2 <= len(t) <= 28 and not t.endswith(("。", "、", "です", "ます")):
+    if size >= body * 1.22 and 2 <= len(t) <= 28 and not t.endswith(("。", "．", "、", "です", "ます")):
         if not HEAD_START.match(t) and not ITEM_START.match(t):
             return "h3"
     return None
@@ -434,6 +479,8 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
     in_remember = False
     remember: list[str] = []
     choices: list[tuple[str, str]] = []
+    choice_line: dict | None = None
+    remember_line: dict | None = None
     last_y: float | None = None
 
     def flush_p():
@@ -443,26 +490,26 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
             buf = ""
 
     def flush_q():
-        nonlocal in_q, choices
-        if in_q:
+        nonlocal in_q, choices, choice_line
+        if in_q and choices:
             acc.append(("choices", choices))
-            choices = []
-            in_q = False
+        choices = []
+        in_q = False
+        choice_line = None
 
     def flush_remember():
-        nonlocal in_remember, remember
+        nonlocal in_remember, remember, remember_line
         items = [x for x in remember if x]
         if items:
             acc.append(("remember", items))
         remember = []
         in_remember = False
+        remember_line = None
 
     def push_heading(kind: str, text: str):
         if acc and acc[-1][0] in {"h2", "h3"}:
             prev = str(acc[-1][1])
-            if prev.endswith(("と", "の", "を", "は", "が", "て", "で")) or (
-                len(prev) <= 16 and len(text) <= 12 and "。" not in prev
-            ):
+            if prev.endswith(("と", "の", "を", "は", "が", "て", "で")):
                 acc[-1] = (acc[-1][0], prev + text)
                 return
         acc.append((kind, text))
@@ -475,6 +522,7 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
             acc.append(("raw", L["html"]))
             last_y = L.get("y0")
             continue
+        raw = str(L.get("raw_text", L["text"])).strip()
         t = clean_extracted_text(L["text"])
         if not t:
             continue
@@ -484,17 +532,31 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
             last_y = y
         kind = is_heading(t, L["size"], L["bold"], body)
         ch = CHOICE.match(t)
+        if ch and ch.group(1).isascii() and re.match(r"^[〜～\-–—]\s*[A-Da-d]", ch.group(2)):
+            ch = None
 
         if kind == "remember":
             flush_p()
             flush_q()
             in_remember = True
             continue
-        if in_remember and t.startswith(("□", "■")):
-            item = re.sub(rf"^[{BOX_CHARS}]+\s*", "", t).strip()
-            if item:
-                remember.append(item)
+        if raw.startswith(("□", "▢", "☐", "◻")):
+            flush_p()
+            flush_q()
+            in_remember = True
+            remember.append(t)
+            remember_line = L
             continue
+        if in_remember and remember and remember_line:
+            same_page = L.get("page") == remember_line.get("page")
+            vertical_gap = L.get("y0", 0) - remember_line.get("y0", 0)
+            indented = L.get("x0", 0) > remember_line.get("x0", 0) + body * 0.5
+            if same_page and 0 <= vertical_gap <= body * 2 and indented:
+                remember[-1] += t
+                remember_line = L
+                continue
+        if in_remember:
+            flush_remember()
 
         if kind == "h2ans":
             flush_p()
@@ -517,17 +579,34 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
             in_q = True
             acc.append(("h3q", t))
             continue
-        if ch and (in_q or acc and acc[-1][0] in {"h3q", "choices", "p"}):
+        if ch and (in_q or acc and acc[-1][0] in {"h3q", "choices"}):
             flush_p()
             if not in_q:
                 in_q = True
             choices.append((ch.group(1), ch.group(2).strip()))
+            choice_line = L
             continue
         if in_q and choices and not kind:
             last_m, last_t = choices[-1]
-            if not last_t.endswith(("。", "？", "！")):
+            same_page = choice_line is not None and L.get("page") == choice_line.get("page")
+            vertical_gap = (
+                L.get("y0", 0) - choice_line.get("y0", 0)
+                if choice_line is not None else body * 99
+            )
+            indented = (
+                choice_line is not None
+                and L.get("x0", 0) >= choice_line.get("x0", 0) + body * 0.5
+            )
+            if (
+                not last_t.endswith(SENTENCE_END)
+                and same_page
+                and 0 <= vertical_gap <= body * 2.5
+                and indented
+            ):
                 choices[-1] = (last_m, last_t + t)
+                choice_line = L
                 continue
+            flush_q()
         if kind in {"h2", "h3"}:
             flush_p()
             flush_q()
@@ -538,7 +617,7 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
             flush_p()
             flush_remember()
             buf = t
-            if t.endswith(("。", "？", "！")):
+            if t.endswith(SENTENCE_END):
                 flush_p()
             continue
         if buf and ITEM_START.match(buf):
@@ -551,7 +630,7 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
                 flush_p()
             else:
                 buf += t
-                if t.endswith(("。", "？", "！")):
+                if t.endswith(SENTENCE_END):
                     flush_p()
                 continue
         if buf and not buf.endswith(("。", "、", "：", ":", "；")):
@@ -560,7 +639,7 @@ def structure_lines(lines: list[dict], body: float) -> list[tuple[str, object]]:
             buf += t
         else:
             buf = t
-        if t.endswith(("。", "？", "！")):
+        if t.endswith(SENTENCE_END):
             if in_ans:
                 acc.append(("ap", buf))
                 buf = ""
@@ -680,16 +759,26 @@ def extract_unit(doc, unit, layout: dict, headers: set[str], assets: Path) -> tu
         callouts = find_callouts(page, layout)
         figboxes = [f["clip"] for f in figs]
         callboxes = [c["clip"] for c in callouts]
-        skip_boxes = tboxes + figboxes + callboxes
         all_lines = lines_from_page(page)
         two_up = has_two_content_columns(all_lines, layout)
         main, side = [], []
         for L in all_lines:
             L = dict(L)
+            L["raw_text"] = L["text"]
             L["text"] = clean_extracted_text(L["text"])
             if skip_line(L, layout, headers, extra):
                 continue
-            if any(line_inside_box(L, b) for b in skip_boxes):
+            if any(line_inside_box(L, b) for b in tboxes + callboxes):
+                continue
+            if any(
+                line_inside_box(
+                    L,
+                    b,
+                    preserve_body=True,
+                    body_size=layout["body_size"],
+                )
+                for b in figboxes
+            ):
                 continue
             L["page"] = pn
             if not two_up and layout["mode"] == "two" and L["x0"] >= split:

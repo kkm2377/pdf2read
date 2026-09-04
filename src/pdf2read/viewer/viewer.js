@@ -20,6 +20,12 @@
     `<button type="button" data-fs="m">${t.mid}</button>` +
     `<button type="button" data-fs="l">${t.large}</button>` +
     `</nav>`;
+  const syncChromeHeight = () => {
+    document.documentElement.style.setProperty("--chrome-bar-height", `${bar.offsetHeight}px`);
+  };
+  syncChromeHeight();
+  window.addEventListener("resize", syncChromeHeight, { passive: true });
+  if ("ResizeObserver" in window) new ResizeObserver(syncChromeHeight).observe(bar);
   const savedFs = localStorage.getItem("pdf2read-fs") || "m";
   document.documentElement.classList.add("fs-" + savedFs);
   bar.querySelectorAll("[data-fs]").forEach((btn) => {
