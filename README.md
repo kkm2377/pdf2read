@@ -3,6 +3,9 @@
 선택 가능한 텍스트 PDF를 읽기 좋은 HTML 뷰어로 바꿉니다.
 
 본문은 원문 HTML로 유지하고 색, 2단 측주, 표, 그림을 PDF에서 가져옵니다.
+일반 페이지는 PyMuPDF로 빠르게 처리하고, 선택 설치한 Docling이 있으면 복잡하거나
+스캔된 페이지만 구조 분석·OCR로 다시 처리합니다. 그래도 신뢰도가 낮은 페이지는
+HTML 안에서 원본 페이지를 바로 펼쳐 볼 수 있습니다.
 
 로컬에서만 동작합니다. 올린 PDF는 바깥 서버로 나가지 않습니다.
 
@@ -14,7 +17,27 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Python 3.11+, 의존성은 PyMuPDF 하나입니다.
+Python 3.11+가 필요합니다.
+
+가벼운 기본 설치는 PyMuPDF만 사용합니다. Apple Silicon 16GB 이상에서는 균형형 설치를
+권장합니다. Docling 모델은 첫 변환 때 한 번 다운로드되고 이후 로컬 캐시에서 실행됩니다.
+
+```bash
+pip install -e ".[quality]"
+python -m pdf2read doctor
+```
+
+회전·기울기 보정이 필요한 스캔 PDF를 OCRmyPDF로 먼저 정리하려면 선택적으로 설치합니다.
+
+```bash
+# macOS
+brew install ocrmypdf tesseract-lang
+
+# Linux: 배포판의 Tesseract/Ghostscript를 설치한 뒤
+pip install -e ".[ocr]"
+
+python -m pdf2read doctor
+```
 
 ## 앱으로 쓰기
 
@@ -42,34 +65,86 @@ python -m pdf2read serve out/book --port 8770
 
 옵션:
 
-- `--lang` HTML에 기록할 원문 언어. 기본 `auto` (글자에서 추정)
+- `--lang` 원문 언어. 기본 `auto`; 순수 이미지 스캔은 서재 옵션에서 직접 선택 권장
 - `--ui-lang` 안내 문구 `ko` / `en` / `ja`
 - `--start` `--end` 페이지 범위
 - `--chunk` 북마크가 없을 때 몇 쪽을 한 항목으로 묶을지
 - `--library` 서재로 돌아가는 링크를 뷰어에 넣습니다
+- `--profile` `balanced`(기본) / `auto` / `fast`
+- `--ocr` `auto`(Docling OCR) / `off` / `ocrmypdf`
+- `--ocr-languages` OCRmyPDF 언어. 기본 `eng+jpn+kor`
+- `--page-images` `auto`(저신뢰만) / `always` / `never`
+- `--confidence-threshold` Docling·원본 보기로 넘길 기준. 기본 `0.62`
+- `--max-engine-pages` 한 문서에서 Docling이 처리할 최대 페이지. 기본 `80`
+- `--no-cache` Docling 페이지 캐시를 사용하지 않음
 - `--host` 서버가 듣는 주소. 기본 `127.0.0.1`(이 컴퓨터만). 태블릿은 `0.0.0.0`
 - `--allow-remote-write` 원격 기기에도 변환·이동·삭제 허용. 안전상 권장하지 않음
+
+예:
+
+```bash
+python -m pdf2read convert scan.pdf -o out/scan \
+  --profile balanced --ocr auto --page-images auto --library
+
+python -m pdf2read convert tilted-scan.pdf -o out/scan \
+  --profile balanced --ocr ocrmypdf --ocr-languages eng+jpn+kor
+```
 
 ## 다른 프로그램에서
 
 ```python
 from pdf2read import convert_book
 
-result = convert_book("book.pdf", "out/book")
+result = convert_book(
+    "book.pdf",
+    "out/book",
+    profile="balanced",
+    ocr="auto",
+    page_images="auto",
+)
 print(result["title"], result["units"], result["out"])
 ```
 
-`convert_book`은 출력 폴더 경로와 목차 방식(`outline` / `visual` / `chunks`)을 담은 dict를 돌려줍니다.
+`convert_book`은 출력 폴더, 목차 방식(`outline` / `visual` / `chunks`), 규칙·Docling·
+원본 이미지 페이지 수와 캐시 적중 수를 담은 dict를 돌려줍니다.
 
-## 잘 되는 PDF / 아직인 PDF
+## 처리 방식
 
-| 잘 되는 편 | 아직 |
-|---|---|
-| 글자를 선택할 수 있는 교과서·문제집 | 스캔 이미지만 있는 PDF (OCR 없음) |
-| PDF 북마크가 있는 책 | 잡지처럼 레이아웃이 매우 복잡한 것 |
-| 본문+측주 2단 | 그림 속 글자를 HTML 텍스트로 추출 |
+- 선택 가능한 일반 PDF: 내장 규칙 엔진으로 빠르게 변환
+- 복잡한 표·다단·스캔 페이지: `[quality]` 설치 시 Docling으로 선택 처리
+- 이미지 스캔: macOS OCR 또는 RapidOCR, 선택적으로 OCRmyPDF 전처리
+- 저신뢰 페이지: `원본 페이지 보기`가 자동 생성되어 PDF를 따로 열 필요 없음
+- 변환 품질 기록: 각 책의 `viewer/quality.json`
 
-시험 문제처럼 `問` 옆에 큰 숫자가 있는 레이아웃은 문항 카드로 묶으려 합니다. 모든 출판사 스타일을 맞추지는 않습니다.
+세로쓰기, 손상되거나 암호화된 PDF, 매우 복잡한 잡지형 문서는 원본 보기가 붙을 수
+있습니다. 모든 페이지를 원본으로 보존하려면 `--page-images always`를 사용합니다.
+
+## 품질 테스트
+
+저작권 있는 교재는 저장소에 넣지 않습니다. 테스트는 직접 생성한 스캔·다단·표·수식·
+그림·시험문제·세로쓰기·암호화 PDF를 사용합니다.
+
+```bash
+pip install -e ".[dev]"
+pytest -q -m "not slow and not needs_model"
+pytest tests/quality -q -m "not needs_model and not slow"
+python scripts/bench_convert.py --pages 200
+```
+
+Docling 모델 테스트는 GitHub Actions의 `quality` workflow를 수동 실행할 때
+`run_models`를 켜서 실행합니다.
+
+## 오픈소스 구성
+
+- PyMuPDF: 기본 PDF 읽기·이미지 생성
+- Docling 2.x(MIT): 복잡한 레이아웃·표·OCR 구조 분석
+- RapidOCR: macOS가 아닌 환경의 기본 Docling OCR
+- ocrmac: macOS Vision 기반 OCR
+- OCRmyPDF 17.x(MPL-2.0): 선택적 회전·기울기 보정 전처리
+
+텍스트가 전혀 없는 스캔은 언어를 자동 판별할 근거가 없습니다. macOS는 다국어 OCR을
+시도하지만 RapidOCR 환경에서는 서재의 `원문 언어` 또는 CLI `--lang`을 반드시
+`ja`, `ko`, `en`, `zh` 중 하나로 지정하세요.
 
 ## GitHub에 올릴 때
 

@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: "22"
       - run: python -m pip install -e . pytest
-      - run: python -m pytest -q
+      - run: python -m pytest -q -m "not slow and not needs_model"
       - run: python -m compileall -q src tests
       - run: node --check src/pdf2read/web/library.js
       - run: node --check src/pdf2read/viewer/viewer.js

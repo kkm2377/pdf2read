@@ -237,6 +237,50 @@ figcaption {
   font-weight: 700;
 }
 
+.source-page {
+  margin: 0.8rem 0 1rem;
+  border: 1px solid var(--accent-line);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+.source-page summary {
+  min-height: 44px;
+  padding: 0.65rem 0.9rem;
+  color: var(--accent-ink);
+  font-size: 0.86rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.source-page-image {
+  padding: 0.75rem;
+  border-top: 1px solid var(--accent-line);
+  background: var(--paper);
+  text-align: center;
+}
+.source-page-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+.docling-page {
+  display: flow-root;
+}
+.docling-page img, .docling-page svg {
+  max-width: 100%;
+  height: auto;
+}
+.docling-page table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.docling-page th, .docling-page td {
+  padding: 0.5rem;
+  border: 1px solid var(--accent-line);
+  vertical-align: top;
+}
+
 .book-table {
   width: 100%;
   border-collapse: collapse;

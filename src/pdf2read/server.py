@@ -17,7 +17,7 @@ from urllib.parse import unquote, urlparse
 from pdf2read.convert import convert_book
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
-MAX_UPLOAD = 80 * 1024 * 1024
+MAX_UPLOAD = 256 * 1024 * 1024
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
 
@@ -55,6 +55,8 @@ def _book_info(root: Path, book: Path) -> dict:
     folder = "" if book.parent == root else book.parent.relative_to(root).as_posix()
     title = book.name
     units = 0
+    pipeline = "rules"
+    source_pages = 0
     nav = book / "viewer" / "nav-data.js"
     try:
         text = nav.read_text(encoding="utf-8")
@@ -64,13 +66,21 @@ def _book_info(root: Path, book: Path) -> dict:
         data = json.loads(raw)
         title = data.get("title") or title
         units = len(data.get("pages") or [])
+        pipeline = str(data.get("pipeline") or "rules")
     except Exception:
+        pass
+    try:
+        quality = json.loads((book / "viewer" / "quality.json").read_text(encoding="utf-8"))
+        source_pages = int((quality.get("stats") or {}).get("image_pages") or 0)
+    except (OSError, ValueError, TypeError):
         pass
     return {
         "id": rel,
         "title": title,
         "href": f"/{rel}/index.html",
         "units": units,
+        "pipeline": pipeline,
+        "source_pages": source_pages,
         "folder": folder,
         "mtime": int(book.stat().st_mtime),
     }
@@ -274,10 +284,21 @@ def make_handler(root: Path, allow_remote_write: bool = False):
                 self._json(400, {"error": "PDF만 올릴 수 있습니다."})
                 return
             lang = (fields.get("lang") or "auto").strip() or "auto"
+            if lang not in {"auto", "ja", "ko", "en", "zh"}:
+                lang = "auto"
             ui_lang = (fields.get("ui_lang") or "ko").strip() or "ko"
             if ui_lang not in {"ko", "en", "ja"}:
                 ui_lang = "ko"
             folder = (fields.get("folder") or "").strip()
+            profile = (fields.get("profile") or "balanced").strip()
+            if profile not in {"auto", "fast", "balanced"}:
+                profile = "balanced"
+            ocr = (fields.get("ocr") or "auto").strip()
+            if ocr not in {"auto", "off", "ocrmypdf"}:
+                ocr = "auto"
+            page_images = (fields.get("page_images") or "auto").strip()
+            if page_images not in {"auto", "always", "never"}:
+                page_images = "auto"
             job_id = uuid.uuid4().hex[:12]
             with JOBS_LOCK:
                 JOBS[job_id] = {
@@ -290,7 +311,10 @@ def make_handler(root: Path, allow_remote_write: bool = False):
                 }
             threading.Thread(
                 target=_run_job,
-                args=(root, job_id, filename, data, lang, ui_lang, folder),
+                args=(
+                    root, job_id, filename, data, lang, ui_lang, folder,
+                    profile, ocr, page_images,
+                ),
                 daemon=True,
             ).start()
             self._json(202, {"id": job_id})
@@ -372,7 +396,18 @@ def make_handler(root: Path, allow_remote_write: bool = False):
     return Handler
 
 
-def _run_job(root: Path, job_id: str, filename: str, data: bytes, lang: str, ui_lang: str, folder: str = "") -> None:
+def _run_job(
+    root: Path,
+    job_id: str,
+    filename: str,
+    data: bytes,
+    lang: str,
+    ui_lang: str,
+    folder: str = "",
+    profile: str = "balanced",
+    ocr: str = "auto",
+    page_images: str = "auto",
+) -> None:
     def log(msg: str):
         with JOBS_LOCK:
             JOBS[job_id]["log"].append(msg)
@@ -401,6 +436,9 @@ def _run_job(root: Path, job_id: str, filename: str, data: bytes, lang: str, ui_
             lang=lang,
             ui_lang=ui_lang,
             show_library=True,
+            profile=profile,
+            ocr=ocr,
+            page_images=page_images,
             progress=log,
         )
         rel = dest.relative_to(root.resolve()).as_posix()

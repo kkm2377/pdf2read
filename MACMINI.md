@@ -29,7 +29,18 @@ cd pdf2read
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e ".[quality]"
+python -m pdf2read doctor
+```
+
+`Docling: OK`와 `macOS OCR: OK`인지 확인하세요. Docling 모델은 첫 변환 때 다운로드되므로
+처음 한 번은 인터넷과 시간이 필요합니다. 이후에는 로컬 캐시로 실행됩니다.
+
+기울어진 스캔 PDF 전처리도 사용할 경우:
+
+```bash
+brew install ocrmypdf tesseract-lang
+python -m pdf2read doctor
 ```
 
 변환 결과(`out/`)는 git에 없습니다. 아래 2-A 또는 2-B 중 하나로 책을 준비하세요.
@@ -46,10 +57,12 @@ pip install -e .
 
 ```bash
 source .venv/bin/activate
-python -m pdf2read convert /절대경로/교과서.pdf -o out/sg --ui-lang ko --library
+python -m pdf2read convert /절대경로/교과서.pdf -o out/sg \
+  --profile balanced --ocr auto --page-images auto --ui-lang ko --library
 ```
 
 여러 권이면 `-o out/폴더이름` 만 바꿔 반복합니다.
+스캔이 기울거나 회전돼 있으면 `--ocr ocrmypdf`를 사용하세요.
 
 ## 3. 서버 켜기 (태블릿이 접속하려면 host가 필수)
 
@@ -98,6 +111,7 @@ macOS 방화벽이 켜져 있으면 Python이 8770을 받도록 허용하세요.
 ## 6. 확인 체크리스트
 
 - [ ] `git pull` 한 `main` 이 GitHub와 같음
+- [ ] `python -m pdf2read doctor`에서 Docling과 macOS OCR이 `OK`
 - [ ] `out/` 에 책이 있고 서재에 보임
 - [ ] 맥 미니 브라우저 `http://127.0.0.1:8770/`
 - [ ] 같은 Wi-Fi 태블릿 Chrome `http://LAN_IP:8770/` (읽기 전용)

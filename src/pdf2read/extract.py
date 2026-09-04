@@ -736,75 +736,187 @@ def group_notes(lines: list[dict]) -> str:
     return "\n".join(html_parts)
 
 
-def extract_unit(doc, unit, layout: dict, headers: set[str], assets: Path) -> tuple[str, str]:
+def _source_page_item(doc, page_number: int, assets: Path, pipeline, layout: dict) -> dict | None:
+    from pdf2read.pages import render_page_image
+
+    try:
+        if page_number in pipeline.source_images:
+            src = pipeline.source_images[page_number]
+        else:
+            filename = render_page_image(doc[page_number - 1], assets / "pages", page_number)
+            src = f"assets/pages/{filename}"
+            pipeline.source_images[page_number] = src
+            pipeline.stats.image_pages += 1
+            pipeline.log(f"  source p.{page_number} ({filename.rsplit('.', 1)[-1]})")
+        label = f"{pipeline.source_label} · p.{page_number}"
+        score = pipeline.scores.get(page_number)
+        open_by_default = bool(
+            score
+            and score.route == "source-image"
+            and score.metrics.chars < 20
+        )
+        html_out = (
+            f'<details class="source-page" data-source-page="{page_number}"'
+            f'{" open" if open_by_default else ""}>'
+            f"<summary>{esc(label)}</summary>"
+            f'<div class="source-page-image"><img src="{esc(src)}" '
+            f'alt="{esc(label)}" loading="lazy" decoding="async"></div></details>'
+        )
+        return {
+            "text": "",
+            "html": html_out,
+            "special": "raw",
+            "page": page_number,
+            "y0": -1,
+            "x0": 0,
+            "x1": layout["width"],
+            "y1": 0,
+            "size": layout["body_size"],
+            "bold": False,
+            "color": 0,
+        }
+    except Exception as exc:
+        pipeline.log(f"  source p.{page_number} 생성 실패: {type(exc).__name__}")
+        return None
+
+
+def extract_page_rules(
+    page,
+    page_number: int,
+    layout: dict,
+    headers: set[str],
+    extra: set[str],
+    assets: Path,
+) -> tuple[list[dict], list[dict]]:
+    extras = []
+    tboxes = []
+    for bbox, rows in find_tables(page):
+        html_t = table_html(rows)
+        if html_t:
+            tboxes.append(bbox)
+            extras.append({
+                "text": "", "html": html_t, "special": "table",
+                "y0": bbox[1], "x0": bbox[0], "page": page_number, "size": 10,
+                "bold": False, "color": 0, "x1": bbox[2], "y1": bbox[3],
+            })
+    figs = find_figures(page, layout)
+    clip_figures(page, figs, assets, f"fig-p{page_number:03d}")
+    callouts = find_callouts(page, layout)
+    figboxes = [f["clip"] for f in figs]
+    callboxes = [c["clip"] for c in callouts]
+    all_lines = lines_from_page(page)
+    two_up = has_two_content_columns(all_lines, layout)
+    main, side = [], []
+    split = layout["split_x"] if layout["mode"] == "two" else layout["width"]
+    for line in all_lines:
+        line = dict(line)
+        line["raw_text"] = line["text"]
+        line["text"] = clean_extracted_text(line["text"])
+        if skip_line(line, layout, headers, extra):
+            continue
+        if any(line_inside_box(line, box) for box in tboxes + callboxes):
+            continue
+        if any(
+            line_inside_box(
+                line,
+                box,
+                preserve_body=True,
+                body_size=layout["body_size"],
+            )
+            for box in figboxes
+        ):
+            continue
+        line["page"] = page_number
+        if not two_up and layout["mode"] == "two" and line["x0"] >= split:
+            side.append(line)
+        else:
+            main.append(line)
+    for fig in figs:
+        extras.append({
+            "text": "", "special": "fig", "page": page_number, "y0": fig["clip"][1],
+            "x0": fig["clip"][0], "x1": fig["clip"][2], "y1": fig["clip"][3],
+            "size": 10, "bold": False, "color": 0,
+            "html": (
+                f'<figure class="diagram"><img src="assets/{fig["file"]}" alt="{esc(fig["caption"])}">'
+                f"<figcaption>{esc(fig['caption'])}</figcaption></figure>"
+            ),
+        })
+    for box in callouts:
+        html_c = callout_html(page, box)
+        if not html_c:
+            continue
+        extras.append({
+            "text": "", "special": "callout", "page": page_number, "y0": box["y0"],
+            "x0": box["clip"][0], "x1": box["clip"][2], "y1": box["clip"][3],
+            "size": 10, "bold": False, "color": 0, "html": html_c,
+        })
+    return order_page_items(main + extras, layout, two_up), side
+
+
+def extract_unit(
+    doc,
+    unit,
+    layout: dict,
+    headers: set[str],
+    assets: Path,
+    *,
+    pipeline=None,
+) -> tuple[str, str]:
     extra = {unit.no, unit.title, unit.sec_title, unit.chapter_title} - {""}
     notes_all = []
     kept_all = []
-    split = layout["split_x"] if layout["mode"] == "two" else layout["width"]
-    for pn in unit.pdf_pages:
-        page = doc[pn - 1]
-        extras = []
-        tboxes = []
-        for bbox, rows in find_tables(page):
-            html_t = table_html(rows)
-            if html_t:
-                tboxes.append(bbox)
-                extras.append({
-                    "text": "", "html": html_t, "special": "table",
-                    "y0": bbox[1], "x0": bbox[0], "page": pn, "size": 10, "bold": False,
-                    "color": 0, "x1": bbox[2], "y1": bbox[3],
-                })
-        figs = find_figures(page, layout)
-        clip_figures(page, figs, assets, f"fig-p{pn:03d}")
-        callouts = find_callouts(page, layout)
-        figboxes = [f["clip"] for f in figs]
-        callboxes = [c["clip"] for c in callouts]
-        all_lines = lines_from_page(page)
-        two_up = has_two_content_columns(all_lines, layout)
-        main, side = [], []
-        for L in all_lines:
-            L = dict(L)
-            L["raw_text"] = L["text"]
-            L["text"] = clean_extracted_text(L["text"])
-            if skip_line(L, layout, headers, extra):
-                continue
-            if any(line_inside_box(L, b) for b in tboxes + callboxes):
-                continue
-            if any(
-                line_inside_box(
-                    L,
-                    b,
-                    preserve_body=True,
-                    body_size=layout["body_size"],
-                )
-                for b in figboxes
-            ):
-                continue
-            L["page"] = pn
-            if not two_up and layout["mode"] == "two" and L["x0"] >= split:
-                side.append(L)
-            else:
-                main.append(L)
+    for page_number in unit.pdf_pages:
+        engine_result = pipeline.extract_with_engine(page_number) if pipeline else None
+        source_item = None
+        if pipeline and pipeline.wants_source_image(page_number, engine_result):
+            source_item = _source_page_item(doc, page_number, assets, pipeline, layout)
+            if source_item:
+                kept_all.append(source_item)
+        if engine_result and engine_result.has_content:
+            kept_all.append({
+                "text": "",
+                "html": engine_result.main_html,
+                "special": "raw",
+                "page": page_number,
+                "y0": 0,
+                "x0": 0,
+                "x1": layout["width"],
+                "y1": layout["height"],
+                "size": layout["body_size"],
+                "bold": False,
+                "color": 0,
+            })
+            continue
+        score = pipeline.scores.get(page_number) if pipeline else None
+        if (
+            source_item is not None
+            and score is not None
+            and score.metrics.chars < 20
+            and score.metrics.image_ratio >= 0.45
+        ):
+            continue
+        main, side = extract_page_rules(
+            doc[page_number - 1],
+            page_number,
+            layout,
+            headers,
+            extra,
+            assets,
+        )
+        if pipeline and not main:
+            score = pipeline.scores.get(page_number)
+            if score:
+                score.confidence = min(score.confidence, 0.1)
+                score.route = "source-image"
+                if "empty_rules_output" not in score.reasons:
+                    score.reasons.append("empty_rules_output")
+            if source_item is None and pipeline.wants_source_image(page_number):
+                source_item = _source_page_item(doc, page_number, assets, pipeline, layout)
+                if source_item:
+                    kept_all.append(source_item)
+        kept_all.extend(main)
         notes_all.extend(side)
-        for fig in figs:
-            extras.append({
-                "text": "", "special": "fig", "page": pn, "y0": fig["clip"][1],
-                "x0": fig["clip"][0], "x1": fig["clip"][2], "y1": fig["clip"][3],
-                "size": 10, "bold": False, "color": 0,
-                "html": (
-                    f'<figure class="diagram"><img src="assets/{fig["file"]}" alt="{esc(fig["caption"])}">'
-                    f"<figcaption>{esc(fig['caption'])}</figcaption></figure>"
-                ),
-            })
-        for box in callouts:
-            html_c = callout_html(page, box)
-            if not html_c:
-                continue
-            extras.append({
-                "text": "", "special": "callout", "page": pn, "y0": box["y0"],
-                "x0": box["clip"][0], "x1": box["clip"][2], "y1": box["clip"][3],
-                "size": 10, "bold": False, "color": 0, "html": html_c,
-            })
-        kept_all.extend(order_page_items(main + extras, layout, two_up))
+        if pipeline:
+            pipeline.stats.rules_pages += 1
     blocks = structure_lines(kept_all, layout["body_size"])
     return render_blocks(blocks, unit.title), group_notes(notes_all)

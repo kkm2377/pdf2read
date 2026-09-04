@@ -27,6 +27,7 @@ UI = {
         "howto_2": "아래 이전/다음, 키보드 ← → 로 이동합니다.",
         "howto_3": "왼쪽 위의 pdf2read는 서재로, 타이틀로는 이 책의 첫 화면으로 갑니다.",
         "map_hint": "← → 로 앞뒤 항목으로 이동합니다. T 키로 목차를 엽니다.",
+        "source_page": "원본 페이지 보기",
         "answers": "解答と解説を見る",
         "library": "pdf2read",
         "home": "pdf2read",
@@ -47,6 +48,7 @@ UI = {
         "howto_2": "Use Previous/Next or the arrow keys.",
         "howto_3": "pdf2read goes to the library. Title goes to this book’s first page.",
         "map_hint": "Use ← → to move. Press T for the table of contents.",
+        "source_page": "View original page",
         "answers": "Show answers",
         "library": "pdf2read",
         "home": "pdf2read",
@@ -67,6 +69,7 @@ UI = {
         "howto_2": "前へ/次へ、← → で移動します。",
         "howto_3": "左上のpdf2readは書庫、タイトルへはこの本の先頭です。",
         "map_hint": "← → で前後の項目へ。Tキーで目次。",
+        "source_page": "元のページを見る",
         "answers": "解答と解説を見る",
         "library": "pdf2read",
         "home": "pdf2read",
@@ -265,6 +268,7 @@ def write_book(
     theme,
     ui: dict,
     src_lang: str,
+    pipeline=None,
     progress=None,
 ) -> None:
     from pdf2read.extract import extract_unit as ex
@@ -279,32 +283,50 @@ def write_book(
     shutil.copyfile(VIEWER_DIR / "viewer.js", viewer_out / "viewer.js")
     (viewer_out / "theme.css").write_text(theme_css(theme), encoding="utf-8")
 
+    (out / "index.html").write_text(render_index(book, units, ui, src_lang), encoding="utf-8")
+
+    for i, unit in enumerate(units, 1):
+        main, notes = ex(doc, unit, layout, headers, assets, pipeline=pipeline)
+        html_out = render_unit_html(book, unit, units, main, notes, ui, src_lang)
+        (out / unit.file).write_text(html_out, encoding="utf-8")
+        log(f"  [{i}/{len(units)}] {unit.file}")
     nav = {
         "bookId": book["id"],
         "title": book["title"],
+        "pipeline": pipeline.profile if pipeline else "rules",
         "ui": {k: ui[k] for k in ("prev_lab", "next_lab", "toc") if k in ui},
         "pages": [
             {
-                "id": u.id,
-                "file": u.file,
-                "no": u.no,
-                "title": u.title,
-                "pages": u.pages_label,
-                "chapter_title": u.chapter_title,
-                "sec_title": u.sec_title,
-                "kind": u.kind,
+                "id": unit.id,
+                "file": unit.file,
+                "no": unit.no,
+                "title": unit.title,
+                "pages": unit.pages_label,
+                "chapter_title": unit.chapter_title,
+                "sec_title": unit.sec_title,
+                "kind": unit.kind,
+                "confidence": (
+                    round(
+                        min(
+                            pipeline.scores[pn].effective_confidence
+                            for pn in unit.pdf_pages
+                            if pn in pipeline.scores
+                        ),
+                        3,
+                    )
+                    if pipeline and any(pn in pipeline.scores for pn in unit.pdf_pages)
+                    else 1.0
+                ),
             }
-            for u in units
+            for unit in units
         ],
     }
     (viewer_out / "nav-data.js").write_text(
         "window.BOOK_NAV = " + json.dumps(nav, ensure_ascii=False, indent=2) + ";\n",
         encoding="utf-8",
     )
-    (out / "index.html").write_text(render_index(book, units, ui, src_lang), encoding="utf-8")
-
-    for i, unit in enumerate(units, 1):
-        main, notes = ex(doc, unit, layout, headers, assets)
-        html_out = render_unit_html(book, unit, units, main, notes, ui, src_lang)
-        (out / unit.file).write_text(html_out, encoding="utf-8")
-        log(f"  [{i}/{len(units)}] {unit.file}")
+    if pipeline:
+        (viewer_out / "quality.json").write_text(
+            json.dumps(pipeline.manifest(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )

@@ -3,7 +3,7 @@ import threading
 from http.client import HTTPConnection
 from pathlib import Path
 
-from pdf2read.server import Server, _can_write, _safe_static_target, make_handler
+from pdf2read.server import Server, _can_write, _safe_static_target, list_library, make_handler
 
 
 def test_remote_clients_are_read_only_by_default():
@@ -135,3 +135,20 @@ def test_delete_rejects_non_library_directory(tmp_path: Path):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_library_reports_pipeline_and_source_pages(tmp_path: Path):
+    viewer = tmp_path / "book" / "viewer"
+    viewer.mkdir(parents=True)
+    (viewer / "nav-data.js").write_text(
+        'window.BOOK_NAV = {"title":"Book","pipeline":"balanced","pages":[{},{}]};',
+        encoding="utf-8",
+    )
+    (viewer / "quality.json").write_text(
+        '{"stats":{"image_pages":3}}',
+        encoding="utf-8",
+    )
+    book = list_library(tmp_path)["books"][0]
+    assert book["pipeline"] == "balanced"
+    assert book["source_pages"] == 3
+    assert book["units"] == 2

@@ -41,6 +41,45 @@
         <span id="drop-hint">로컬 변환 · 서버로 보내지 않습니다</span>
         <em id="filename"></em>
       </button>
+      <details class="quality-options">
+        <summary id="options-title">변환 옵션</summary>
+        <div class="quality-grid">
+          <label>
+            <span id="source-lang-label">원문 언어</span>
+            <select id="source-lang">
+              <option value="auto" selected>자동</option>
+              <option value="ja">日本語</option>
+              <option value="ko">한국어</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+            </select>
+          </label>
+          <label>
+            <span id="profile-label">품질</span>
+            <select id="profile">
+              <option value="auto">자동</option>
+              <option value="balanced" selected>균형형</option>
+              <option value="fast">빠르게</option>
+            </select>
+          </label>
+          <label>
+            <span id="ocr-label">OCR</span>
+            <select id="ocr">
+              <option value="auto" selected>자동</option>
+              <option value="off">사용 안 함</option>
+              <option value="ocrmypdf">OCRmyPDF 전처리</option>
+            </select>
+          </label>
+          <label>
+            <span id="page-images-label">원본 페이지</span>
+            <select id="page-images">
+              <option value="auto" selected>문제 페이지만</option>
+              <option value="always">모든 페이지</option>
+              <option value="never">포함 안 함</option>
+            </select>
+          </label>
+        </div>
+      </details>
       <div class="stage-bar">
         <span class="status" id="status" role="status" aria-live="polite"></span>
         <button type="submit" id="go">변환</button>

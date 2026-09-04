@@ -1,11 +1,16 @@
 [project]
 name = "pdf2read"
-version = "0.1.0"
+version = "0.2.0"
 description = "Convert a selectable-text PDF into a readable HTML viewer."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 dependencies = ["pymupdf>=1.24"]
+
+[project.optional-dependencies]
+quality = ["docling-slim[standard,feat-ocr-mac,feat-ocr-rapidocr-onnx]>=2.125.0,<2.126"]
+ocr = ["ocrmypdf>=17.11.0,<18"]
+dev = ["pytest>=8,<10"]
 
 [project.scripts]
 pdf2read = "pdf2read.cli:main"
@@ -19,3 +24,10 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 pdf2read = ["viewer/*", "web/*"]
+
+[tool.pytest.ini_options]
+markers = [
+  "quality: synthetic document quality suite",
+  "needs_model: requires optional Docling/OCR models",
+  "slow: large document or performance test",
+]

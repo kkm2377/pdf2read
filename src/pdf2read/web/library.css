@@ -204,6 +204,40 @@ h1 {
 }
 .stage.over .drop { background: var(--accent-soft); }
 
+.quality-options {
+  border-top: 1px solid var(--line);
+  padding: 0 16px;
+}
+.quality-options summary {
+  padding: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.quality-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 0 14px;
+}
+.quality-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.quality-grid select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card-solid);
+  color: var(--ink);
+  font: inherit;
+}
+
 .stage-bar {
   display: flex;
   align-items: center;
@@ -398,6 +432,7 @@ body[data-writable="false"] .book-card { cursor: pointer; }
   .nav { padding: 14px 20px; }
   main { padding-top: 40px; }
   .books, .folder-tray { grid-template-columns: 1fr; }
+  .quality-grid { grid-template-columns: 1fr; }
   h1 { font-size: 2.2rem; }
 }
 

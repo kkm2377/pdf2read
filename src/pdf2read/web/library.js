@@ -13,6 +13,7 @@
       shelf: "서재",
       empty: "아직 책이 없습니다.",
       items: "항목",
+      sourcePages: "원본 보기",
       converting: "변환 중…",
       done: "완료",
       fail: "변환하지 못했습니다.",
@@ -27,6 +28,15 @@
       delFolder: "폴더 삭제",
       confirmDel: "이 HTML을 이 컴퓨터에서 지울까요?",
       confirmFolder: "폴더와 안의 책을 모두 지울까요?",
+      options: "변환 옵션",
+      sourceLang: "원문 언어",
+      sourceLanguages: ["자동", "日本語", "한국어", "English", "中文"],
+      profile: "품질",
+      profiles: ["자동", "균형형", "빠르게"],
+      ocr: "OCR",
+      ocrs: ["자동", "사용 안 함", "OCRmyPDF 전처리"],
+      pageImages: "원본 페이지",
+      pageImageOptions: ["문제 페이지만", "모든 페이지", "포함 안 함"],
     },
     en: {
       lang: "English",
@@ -41,6 +51,7 @@
       shelf: "Library",
       empty: "No books yet.",
       items: "sections",
+      sourcePages: "original views",
       converting: "Converting…",
       done: "Done",
       fail: "Conversion failed.",
@@ -55,6 +66,15 @@
       delFolder: "Delete folder",
       confirmDel: "Delete this HTML from this computer?",
       confirmFolder: "Delete this folder and the books inside?",
+      options: "Conversion options",
+      sourceLang: "Source language",
+      sourceLanguages: ["Auto", "日本語", "한국어", "English", "中文"],
+      profile: "Quality",
+      profiles: ["Auto", "Balanced", "Fast"],
+      ocr: "OCR",
+      ocrs: ["Auto", "Off", "OCRmyPDF preprocessing"],
+      pageImages: "Original pages",
+      pageImageOptions: ["Only low-confidence pages", "All pages", "None"],
     },
     ja: {
       lang: "日本語",
@@ -69,6 +89,7 @@
       shelf: "書庫",
       empty: "まだ本がありません。",
       items: "項目",
+      sourcePages: "元ページ",
       converting: "変換中…",
       done: "完了",
       fail: "変換できませんでした。",
@@ -83,6 +104,15 @@
       delFolder: "フォルダを削除",
       confirmDel: "このHTMLをこのコンピュータから消しますか？",
       confirmFolder: "フォルダと中の本を消しますか？",
+      options: "変換オプション",
+      sourceLang: "原文の言語",
+      sourceLanguages: ["自動", "日本語", "한국어", "English", "中文"],
+      profile: "品質",
+      profiles: ["自動", "バランス", "高速"],
+      ocr: "OCR",
+      ocrs: ["自動", "使用しない", "OCRmyPDF前処理"],
+      pageImages: "元のページ",
+      pageImageOptions: ["問題のあるページのみ", "全ページ", "含めない"],
     },
   };
 
@@ -103,6 +133,10 @@
   const langMenu = document.getElementById("lang-menu");
   const themeBtn = document.getElementById("theme-btn");
   const newFolderBtn = document.getElementById("new-folder");
+  const sourceLangSelect = document.getElementById("source-lang");
+  const profileSelect = document.getElementById("profile");
+  const ocrSelect = document.getElementById("ocr");
+  const pageImagesSelect = document.getElementById("page-images");
   let chosen = null;
   let folders = [];
   let writable = false;
@@ -142,6 +176,19 @@
     go.textContent = c.convert;
     document.getElementById("shelf-title").textContent = c.shelf;
     newFolderBtn.textContent = c.newFolder;
+    document.getElementById("options-title").textContent = c.options;
+    document.getElementById("source-lang-label").textContent = c.sourceLang;
+    document.getElementById("profile-label").textContent = c.profile;
+    document.getElementById("ocr-label").textContent = c.ocr;
+    document.getElementById("page-images-label").textContent = c.pageImages;
+    [...sourceLangSelect.options].forEach((option, i) => {
+      option.textContent = c.sourceLanguages[i];
+    });
+    [...profileSelect.options].forEach((option, i) => { option.textContent = c.profiles[i]; });
+    [...ocrSelect.options].forEach((option, i) => { option.textContent = c.ocrs[i]; });
+    [...pageImagesSelect.options].forEach((option, i) => {
+      option.textContent = c.pageImageOptions[i];
+    });
     langMenu.querySelectorAll("button").forEach((b) => {
       b.setAttribute("aria-selected", b.dataset.ui === uiLang() ? "true" : "false");
     });
@@ -259,10 +306,13 @@
   }
 
   function cardHtml(b, c) {
+    const source = Number(b.source_pages || 0);
+    const detail = `${Number(b.units || 0)} ${c.items}`
+      + (source ? ` · ${source} ${c.sourcePages}` : "");
     return (
       `<article class="book-card" ${writable ? 'draggable="true"' : ""} data-book-id="${escapeHtml(b.id)}">` +
       (writable ? `<button type="button" class="icon-del" data-del="${escapeHtml(b.id)}" aria-label="${escapeHtml(c.del)}">×</button>` : "") +
-      `<a href="${escapeHtml(b.href)}"><small>${b.units} ${escapeHtml(c.items)}</small>` +
+      `<a href="${escapeHtml(b.href)}"><small>${escapeHtml(detail)}</small>` +
       `<h3>${escapeHtml(b.title)}</h3></a>` +
       `</article>`
     );
@@ -358,8 +408,11 @@
     }
     const body = new FormData();
     body.append("pdf", chosen, chosen.name);
-    body.append("lang", "auto");
+    body.append("lang", sourceLangSelect.value);
     body.append("ui_lang", uiLang());
+    body.append("profile", profileSelect.value);
+    body.append("ocr", ocrSelect.value);
+    body.append("page_images", pageImagesSelect.value);
     go.disabled = true;
     progress.hidden = false;
     logEl.hidden = true;

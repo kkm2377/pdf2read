@@ -2,5 +2,5 @@
 
 from pdf2read.convert import convert_book
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["convert_book"]
